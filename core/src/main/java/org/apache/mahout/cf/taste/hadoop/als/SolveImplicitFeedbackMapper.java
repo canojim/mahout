@@ -17,40 +17,44 @@
 
 package org.apache.mahout.cf.taste.hadoop.als;
 
-import com.google.common.base.Preconditions;
+import java.io.IOException;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.als.ImplicitFeedbackAlternatingLeastSquaresSolver;
 
-import java.io.IOException;
+import com.google.common.base.Preconditions;
 
 /** Solving mapper that can be safely executed using multiple threads */
 public class SolveImplicitFeedbackMapper
     extends SharingMapper<IntWritable,VectorWritable,IntWritable,VectorWritable,
-    ImplicitFeedbackAlternatingLeastSquaresSolver> {
+    DistributedImplicitFeedbackAlternatingLeastSquaresSolver> {
 
   private final VectorWritable uiOrmj = new VectorWritable();
 
   @Override
-  ImplicitFeedbackAlternatingLeastSquaresSolver createSharedInstance(Context ctx) throws IOException {
+  DistributedImplicitFeedbackAlternatingLeastSquaresSolver createSharedInstance(Context ctx) throws IOException {
     Configuration conf = ctx.getConfiguration();
 
     double lambda = Double.parseDouble(conf.get(ParallelALSFactorizationJob.LAMBDA));
     double alpha = Double.parseDouble(conf.get(ParallelALSFactorizationJob.ALPHA));
     int numFeatures = conf.getInt(ParallelALSFactorizationJob.NUM_FEATURES, -1);
     int numEntities = Integer.parseInt(conf.get(ParallelALSFactorizationJob.NUM_ENTITIES));
-
+    String pathToYty = conf.get(ParallelALSFactorizationJob.PATH_TO_YTY);
+    
     Preconditions.checkArgument(numFeatures > 0, "numFeatures must be greater then 0!");
 
-    return new ImplicitFeedbackAlternatingLeastSquaresSolver(numFeatures, lambda, alpha,
-        ALS.readMatrixByRowsFromDistributedCache(numEntities, conf));
+    Preconditions.checkArgument(pathToYty != null, "pathToYty is required.");
+    		
+    return new DistributedImplicitFeedbackAlternatingLeastSquaresSolver(numFeatures, numEntities, lambda, alpha,
+        pathToYty, conf);
+    //ALS.readMatrixByRowsFromDistributedCache(numEntities, conf)
   }
 
   @Override
   protected void map(IntWritable userOrItemID, VectorWritable ratingsWritable, Context ctx)
     throws IOException, InterruptedException {
-    ImplicitFeedbackAlternatingLeastSquaresSolver solver = getSharedInstance();
+	DistributedImplicitFeedbackAlternatingLeastSquaresSolver solver = getSharedInstance();
     uiOrmj.set(solver.solve(ratingsWritable.get()));
     ctx.write(userOrItemID, uiOrmj);
   }

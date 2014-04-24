@@ -51,7 +51,8 @@ public class RecommenderJob extends AbstractJob {
   static final String MAX_RATING = RecommenderJob.class.getName() + ".maxRating";
   static final String USER_INDEX_PATH = RecommenderJob.class.getName() + ".userIndex";
   static final String ITEM_INDEX_PATH = RecommenderJob.class.getName() + ".itemIndex";
-
+  static final String RECOMMEND_FILTER_PATH = RecommenderJob.class.getName() + ".recommendFilterPath";
+  
   static final int DEFAULT_NUM_RECOMMENDATIONS = 10;
 
   public static void main(String[] args) throws Exception {
@@ -71,6 +72,7 @@ public class RecommenderJob extends AbstractJob {
     addOption("usesLongIDs", null, "input contains long IDs that need to be translated");
     addOption("userIDIndex", null, "index for user long IDs (necessary if usesLongIDs is true)");
     addOption("itemIDIndex", null, "index for user long IDs (necessary if usesLongIDs is true)");
+    addOption("recommendFilterPath", null, "filter recommended user id. (optional)");
     addOutputOption();
 
     Map<String,List<String>> parsedArgs = parseArguments(args);
@@ -96,6 +98,9 @@ public class RecommenderJob extends AbstractJob {
       conf.set(ITEM_INDEX_PATH, getOption("itemIDIndex"));
     }
 
+    //TODO: Fix NullPointerException when this is not provided
+    conf.set(RECOMMEND_FILTER_PATH, getOption("recommendFilterPath"));
+    
     MultithreadedMapper.setMapperClass(prediction, PredictionMapper.class);
     MultithreadedMapper.setNumberOfThreads(prediction, numThreads);
 
