@@ -137,21 +137,33 @@ public class PredictionMapper
 		long userIndexLongID = -1;
 		
 		if (usesLongIDs) {
-
-			for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
-					userIndexPath, PathType.LIST, PathFilters.partFilter(),
-					null, true, conf)) {
-
-				if (userIndex == record.getFirst().get()) {
-					userIndexLongID = record.getSecond().get();
-
-					if (rcmFilterSet != null && !rcmFilterSet.contains(userIndexLongID)) {
-						return; //Generate recommendation for selected few id only.
+			
+			int count = 0;
+			try {
+				for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
+						userIndexPath, PathType.LIST, PathFilters.partFilter(),
+						null, false, conf)) {
+					
+					if (userIndex == record.getFirst().get()) {
+						userIndexLongID = record.getSecond().get();
+	
+						if (rcmFilterSet != null && !rcmFilterSet.contains(userIndexLongID)) {
+							return; //Generate recommendation for selected few id only.
+						}
 					}
-				}
+					
+					count++;
+				} // for
+			}
+			catch (RuntimeException e) {
+				System.out.println("usesLongIDs userIndex: " + userIndex);
+				System.out.println("count: " + count);
+				
+				e.printStackTrace();
+				throw e;
 			}
 		} else {
-			if (rcmFilterSet != null && !rcmFilterSet.contains(userIndex))
+			if (rcmFilterSet != null && !rcmFilterSet.contains(new Long(userIndex)))
 				return;
 		}
 				
@@ -205,7 +217,7 @@ public class PredictionMapper
 				long count = 0;
 				for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
 						itemIndexPath, PathType.LIST, PathFilters.partFilter(),
-						null, true, conf)) {
+						null, false, conf)) {
 										
 					RecommendedItem item = recommendedMap.get(new Long(record
 							.getFirst().get()));
