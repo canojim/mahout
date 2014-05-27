@@ -98,8 +98,9 @@ public class RecommenderJob extends AbstractJob {
       conf.set(ITEM_INDEX_PATH, getOption("itemIDIndex"));
     }
 
-    //TODO: Fix NullPointerException when this is not provided
-    conf.set(RECOMMEND_FILTER_PATH, getOption("recommendFilterPath"));
+    String rcmPath = getOption("recommendFilterPath");
+    if (rcmPath != null)
+    	conf.set(RECOMMEND_FILTER_PATH, rcmPath);
     
     MultithreadedMapper.setMapperClass(prediction, PredictionMapper.class);
     MultithreadedMapper.setNumberOfThreads(prediction, numThreads);
