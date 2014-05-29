@@ -19,16 +19,23 @@ package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.apache.mahout.cf.taste.hadoop.MutableRecommendedItem;
 import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
 import org.apache.mahout.cf.taste.hadoop.TopItemsQueue;
@@ -101,13 +108,13 @@ public class PredictionMapper
 
 		pathToU = new Path(conf.get(RecommenderJob.USER_FEATURES_PATH));
 		pathToM = new Path(conf.get(RecommenderJob.ITEM_FEATURES_PATH));
-		
+
 		String p = conf.get(RecommenderJob.RECOMMEND_FILTER_PATH);
 		if (p != null) {
 			rcmFilterPath = new Path(p);
 			rcmFilterSet = loadFilterList(conf);
 		}
-		
+
 		if (usesLongIDs) {
 			// userIDIndex =
 			// TasteHadoopUtils.readIDIndexMap(conf.get(RecommenderJob.USER_INDEX_PATH),
@@ -132,43 +139,45 @@ public class PredictionMapper
 		// uAndM = getSharedInstance();
 		// OpenIntObjectHashMap<Vector> U = uAndM.getFirst();
 		// OpenIntObjectHashMap<Vector> M = uAndM.getSecond();
-		
+
 		int userIndex = userIndexWritable.get();
 		long userIndexLongID = -1;
-		
+
 		if (usesLongIDs) {
-			
+
 			int count = 0;
 			try {
 				for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
 						userIndexPath, PathType.LIST, PathFilters.partFilter(),
 						null, false, conf)) {
-					
+
 					if (userIndex == record.getFirst().get()) {
 						userIndexLongID = record.getSecond().get();
-	
-						if (rcmFilterSet != null && !rcmFilterSet.contains(userIndexLongID)) {
-							return; //Generate recommendation for selected few id only.
+
+						if (rcmFilterSet != null
+								&& !rcmFilterSet.contains(userIndexLongID)) {
+							return; // Generate recommendation for selected few
+									// id only.
 						}
 					}
-					
+
 					count++;
 				} // for
-			}
-			catch (RuntimeException e) {
+			} catch (RuntimeException e) {
 				System.out.println("usesLongIDs userIndex: " + userIndex);
 				System.out.println("count: " + count);
-				
+
 				e.printStackTrace();
 				throw e;
 			}
 		} else {
-			if (rcmFilterSet != null && !rcmFilterSet.contains(new Long(userIndex)))
+			if (rcmFilterSet != null
+					&& !rcmFilterSet.contains(new Long(userIndex)))
 				return;
 		}
-				
+
 		Vector ratings = ratingsWritable.get();
-		
+
 		final OpenIntHashSet alreadyRatedItems = new OpenIntHashSet(
 				ratings.getNumNondefaultElements());
 
@@ -210,24 +219,24 @@ public class PredictionMapper
 			}
 
 			if (usesLongIDs) {
-				
+
 				userIDWritable.set(userIndexLongID);
-				
+
 				// Refactor long userID = userIDIndex.get(userIndex);
 				long count = 0;
 				for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
 						itemIndexPath, PathType.LIST, PathFilters.partFilter(),
 						null, false, conf)) {
-										
+
 					RecommendedItem item = recommendedMap.get(new Long(record
 							.getFirst().get()));
-					
+
 					if (item != null) {
 						count++;
 						((MutableRecommendedItem) item).setItemID(record
 								.getSecond().get());
 					}
-					
+
 					if (recommendedMap.size() == count)
 						break;
 				}
@@ -241,8 +250,8 @@ public class PredictionMapper
 				 * topItem.getItemID()); ((MutableRecommendedItem)
 				 * topItem).setItemID(itemID); }
 				 */
-			} else {				
-					userIDWritable.set(userIndex);
+			} else {
+				userIDWritable.set(userIndex);
 			}
 
 			recommendations.set(recommendedItems);
@@ -282,23 +291,72 @@ public class PredictionMapper
 	}
 
 	// load recommendation filter list
-	private HashSet<Long> loadFilterList(Configuration conf)
-			throws IOException {
+	private HashSet<Long> loadFilterList(Configuration conf) throws IOException {
+
+		return loadFilterList(rcmFilterPath, conf);
 		
-		HashSet<Long> s = new HashSet<Long>();
+/*		HashSet<Long> s = new HashSet<Long>();
 		FileSystem fs = FileSystem.get(conf);
-		
+
 		BufferedReader br = new BufferedReader(new InputStreamReader(
 				fs.open(rcmFilterPath)));
-		
+
 		String line;
 		line = br.readLine();
-		
+
 		while (line != null && !"".equals(line)) {
 			s.add(new Long(line));
 			line = br.readLine();
 		}
+
+		return s;
+*/
+	}
+
+	// load recommendation filter list
+	private HashSet<Long> loadFilterList(Path location, Configuration conf)
+			throws IOException {
 		
+		HashSet<Long> s = new HashSet<Long>();
+		
+		FileSystem fileSystem = FileSystem.get(location.toUri(), conf);
+		CompressionCodecFactory factory = new CompressionCodecFactory(conf);
+		FileStatus[] items = fileSystem.listStatus(location);
+		
+		if (items == null) {
+			System.out.println("items is null.");
+			return s;
+		}
+		
+		for (FileStatus item : items) {
+
+			System.out.println("file name: " + item.getPath().getName());
+			// ignoring files like _SUCCESS
+			if (item.getPath().getName().startsWith("_")) {
+				continue;
+			}
+
+			CompressionCodec codec = factory.getCodec(item.getPath());
+			InputStream stream = null;
+
+			// check if we have a compression codec we need to use
+			if (codec != null) {
+				stream = codec
+						.createInputStream(fileSystem.open(item.getPath()));
+			} else {
+				stream = fileSystem.open(item.getPath());
+			}
+
+			StringWriter writer = new StringWriter();
+			IOUtils.copy(stream, writer, "UTF-8");
+			String raw = writer.toString();
+
+			for (String str : raw.split("\n")) {
+				s.add(new Long(str));
+			}
+		}
+		
+		System.out.println("s.size: " + s.size());
 		return s;
 	}
 

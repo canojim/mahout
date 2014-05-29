@@ -14,7 +14,7 @@ public class IndexFormatJob extends AbstractJob {
 	@Override
 	public int run(String[] args) throws Exception {
 		
-		if (args.length <= 2) {
+		if (args.length < 2) {
 			System.out.println("Usage: IndexFormatJob inputPath outputPath");
 		}
 		
