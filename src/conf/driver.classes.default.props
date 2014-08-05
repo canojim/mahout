@@ -17,6 +17,9 @@ org.apache.mahout.text.SequenceFilesFromLuceneStorageDriver = lucene2seq : Gener
 org.apache.mahout.utils.ConcatenateVectorsJob = concatmatrices : Concatenates 2 matrices of same cardinality into a single matrix
 org.apache.mahout.clustering.streaming.tools.ResplitSequenceFiles = resplit : Splits a set of SequenceFiles into a number of equal splits
 org.apache.mahout.clustering.streaming.tools.ClusterQualitySummarizer = qualcluster : Runs clustering experiments and summarizes results in a CSV
+org.apache.mahout.cf.taste.hadoop.als.UserOrItemBlockPartitioner = partitionUsersOrItems : Partition User/Item matrix into multiple blocks
+org.apache.mahout.cf.taste.hadoop.als.RatingBlockPartitioner = partitionRatings : Partition Rating matrix into multiple blocks
+
 
 #Math
 org.apache.mahout.math.hadoop.TransposeJob = transpose : Take the transpose of a matrix
@@ -61,8 +64,8 @@ org.apache.mahout.cf.taste.hadoop.similarity.item.ItemSimilarityJob = itemsimila
 org.apache.mahout.cf.taste.hadoop.item.RecommenderJob = recommenditembased : Compute recommendations using item-based collaborative filtering
 org.apache.mahout.cf.taste.hadoop.als.ParallelALSFactorizationJob = parallelALS : ALS-WR factorization of a rating matrix
 org.apache.mahout.cf.taste.hadoop.als.RecommenderJob = recommendfactorized : Compute recommendations using the factorization of a rating matrix
-prepare20newsgroups = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh 
-trainclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh 
-testclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh 
+prepare20newsgroups = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
+trainclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
+testclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
 lda = deprecated : Try the new Collapsed Variation Bayes LDA, try bin/mahout cvb or bin/mahout cvb0_local
 ldatopics = deprecated : Try the new Collapsed Variation Bayes LDA, try bin/mahout cvb or bin/mahout cvb0_local

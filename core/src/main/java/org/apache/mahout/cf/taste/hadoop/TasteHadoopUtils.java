@@ -80,5 +80,14 @@ public final class TasteHadoopUtils {
   }
 
 
+  /**
+   * Fast multiplicative hash with a nice distribution for 32-bit integer.
+   */
+  public static int byteswap32(int value) {
+    int hc = value * 0x9e3775cd;
+    hc = Integer.reverseBytes(hc);
+    return  hc * 0x9e3775cd;
+  }
+
 
 }
