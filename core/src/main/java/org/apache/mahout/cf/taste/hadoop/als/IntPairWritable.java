@@ -10,25 +10,70 @@ import com.google.common.collect.ComparisonChain;
 
 public class IntPairWritable implements WritableComparable<IntPairWritable> {
 
-	private int userId;
-	private int blockId;
+	private int first;
+	private int second;
+	
+	public IntPairWritable(int value1, int value2) {
+		this.first = value1;
+		this.second = value2;
+	}	
 	
 	@Override
-	public void readFields(DataInput arg0) throws IOException {
-		userId = arg0.readInt();
-		blockId = arg0.readInt();		
+	public void readFields(DataInput in) throws IOException {
+		first = in.readInt();
+		second = in.readInt();		
 	}
 
 	@Override
-	public void write(DataOutput arg0) throws IOException {
-		arg0.writeInt(userId);
-		arg0.writeInt(blockId);
+	public void write(DataOutput out) throws IOException {
+		out.writeInt(first);
+		out.writeInt(second);
 	}
 
 	@Override
 	public int compareTo(IntPairWritable o) {
-		return ComparisonChain.start().compare(userId, o.userId)
-		        .compare(blockId, o.blockId).result();		
+		return ComparisonChain.start().compare(first, o.first)
+		        .compare(second, o.second).result();		
 	}
 
+	@Override
+	public int hashCode() {
+
+		// http://stackoverflow.com/questions/10034328/hashcode-for-objects-with-only-integers
+		
+		final int prime = 31;
+	    int result = 1;
+	    
+	    result = prime * result + this.hashCode();
+	    result = prime * result + first;
+	    result = prime * result + second;
+	    return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj instanceof IntPairWritable) {
+			IntPairWritable w = (IntPairWritable) obj;
+			return first == w.first && second == w.second; 
+		}
+		return false;
+	}
+
+	public int getFirst() {
+		return first;
+	}
+
+	public void setFirst(int first) {
+		this.first = first;
+	}
+
+	public int getSecond() {
+		return second;
+	}
+
+	public void setSecond(int second) {
+		this.second = second;
+	}
+
+	
 }
