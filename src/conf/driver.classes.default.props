@@ -63,6 +63,8 @@ org.apache.mahout.cf.taste.hadoop.als.FactorizationEvaluator = evaluateFactoriza
 org.apache.mahout.cf.taste.hadoop.similarity.item.ItemSimilarityJob = itemsimilarity : Compute the item-item-similarities for item-based collaborative filtering
 org.apache.mahout.cf.taste.hadoop.item.RecommenderJob = recommenditembased : Compute recommendations using item-based collaborative filtering
 org.apache.mahout.cf.taste.hadoop.als.ParallelALSFactorizationJob = parallelALS : ALS-WR factorization of a rating matrix
+org.apache.mahout.cf.taste.hadoop.als.BlockParallelALSFactorizationJob = blockParallelALS : Block ALS-WR factorization of a rating matrix
+
 org.apache.mahout.cf.taste.hadoop.als.RecommenderJob = recommendfactorized : Compute recommendations using the factorization of a rating matrix
 prepare20newsgroups = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
 trainclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh

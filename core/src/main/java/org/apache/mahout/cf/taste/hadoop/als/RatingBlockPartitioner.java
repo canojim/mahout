@@ -93,11 +93,14 @@ public class RatingBlockPartitioner extends AbstractJob {
     Configuration conf = segmentRatings.getConfiguration();
     conf.set(NUMBER_STRIPES, getOption("numStripes"));
 
-    int numBlocks = (int)(Math.pow(Integer.parseInt(getOption("numStripes")), 2.0));
-    for (int blockId = 0; blockId < numBlocks; blockId++) {
-      MultipleOutputs.addNamedOutput(segmentRatings, Integer.toString(blockId), TextOutputFormat.class, NullWritable.class, Text.class);
-    }
+    int numStripes =  Integer.parseInt(getOption("numStripes"));
 
+    for (int i = 0; i < numStripes; i++) { // row
+    	for (int j = 0; j < numStripes; j++) { // column
+    		String blockId = Integer.toString(i) + "x" + Integer.toString(j);    		
+    		MultipleOutputs.addNamedOutput(segmentRatings, blockId, TextOutputFormat.class, NullWritable.class, Text.class);
+    	}    		
+    }
 
     boolean succeeded = segmentRatings.waitForCompletion(true);
 
