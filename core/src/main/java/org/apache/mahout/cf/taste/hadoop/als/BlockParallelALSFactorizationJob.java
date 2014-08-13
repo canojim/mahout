@@ -554,8 +554,17 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			solverConf.set(ALPHA, String.valueOf(alpha));
 			solverConf.setInt(NUM_FEATURES, numFeatures);
 			solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
-			solverConf.set(PATH_TO_YTY, pathToYty.toString());
-			DistributedCache.addCacheFile(blockFixUorM.toUri(), solverConf);
+
+			FileSystem fs = FileSystem.get(blockFixUorM.toUri(), solverConf);
+			FileStatus[] parts = fs
+				.listStatus(blockFixUorM, PathFilters.partFilter());
+			for (FileStatus part : parts) {
+				if (log.isDebugEnabled()) {
+					log.debug("Adding {} to distributed cache", part.getPath()
+						.toString());
+				}
+				DistributedCache.addCacheFile(part.getPath().toUri(), solverConf);
+			}
 				
 			MultithreadedMapper.setMapperClass(solveBlockUorI,
 						solverMapperClassInternal);
@@ -574,7 +583,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		//TODO: map: Aggregate the block result
 		Job updateUorM = prepareJob(getTempPath("BlockRatingOutput"), output,
 				SequenceFileInputFormat.class, Mapper.class,
-				IntWritable.class, MatrixEntryWritable.class,
+				IntWritable.class, ALSContributionWritable.class,
 				UpdateUorMReducer.class, IntWritable.class,
 				VectorWritable.class, SequenceFileOutputFormat.class);
 
