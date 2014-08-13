@@ -13,6 +13,11 @@ public class IntPairWritable implements WritableComparable<IntPairWritable> {
 	private int first;
 	private int second;
 	
+	public IntPairWritable() {
+		this.first = 0;
+		this.second = 0;
+	}
+	
 	public IntPairWritable(int value1, int value2) {
 		this.first = value1;
 		this.second = value2;

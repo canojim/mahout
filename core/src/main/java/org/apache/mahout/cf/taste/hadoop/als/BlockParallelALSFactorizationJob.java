@@ -18,6 +18,7 @@
 package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -37,12 +38,13 @@ import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.IdentityMapper;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
 import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper;
+import org.apache.hadoop.mapreduce.lib.output.LazyOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.cf.taste.hadoop.TasteHadoopUtils;
@@ -231,10 +233,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		// use multiple output to suport block
 		LazyOutputFormat.setOutputFormatClass(itemRatings, SequenceFileOutputFormat.class);
-    for (int blockId = 0; blockId < numUserBlocks; blockId++) {
-      MultipleOutputs.addNamedOutput(itemRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
-      																IntWritable.class, VectorWritable.class);
-    }
+	    for (int blockId = 0; blockId < numUserBlocks; blockId++) {
+	      MultipleOutputs.addNamedOutput(itemRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+	      																IntWritable.class, VectorWritable.class);
+	    }
 
 		itemRatings.setCombinerClass(VectorSumCombiner.class);
 		itemRatings.getConfiguration().set(USES_LONG_IDS,
@@ -254,10 +256,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		// use multiple output to suport block
 		LazyOutputFormat.setOutputFormatClass(userRatings, SequenceFileOutputFormat.class);
-    for (int blockId = 0; blockId < numItemBlocks; blockId++) {
-      MultipleOutputs.addNamedOutput(userRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+		for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+			MultipleOutputs.addNamedOutput(userRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
       																IntWritable.class, VectorWritable.class);
-    }
+		}
 
 		userRatings.setCombinerClass(MergeVectorsCombiner.class);
 		userRatings.getConfiguration().set(NUM_BLOCKS,
@@ -369,19 +371,18 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 	}
 
-	static class VectorSumReducer
-			extends
-			Reducer<IntPairWritable, VectorWritable, WritableComparable<?>, VectorWritable> {
+	static class VectorSumReducer extends
+		Reducer<IntPairWritable, VectorWritable, WritableComparable<?>, VectorWritable> {
 
 		private MultipleOutputs out;
 		private final IntWritable resultKey = new IntWritable();
 		private final VectorWritable resultValue = new VectorWritable();
 
 		@Override
-    protected void setup(Context ctx) throws IOException, InterruptedException {
-      Configuration conf = ctx.getConfiguration();
-      out = new MultipleOutputs(ctx);
-    }
+		protected void setup(Context ctx) throws IOException, InterruptedException {
+			Configuration conf = ctx.getConfiguration();
+			out = new MultipleOutputs(ctx);
+		}
 
 		@Override
 		protected void reduce(IntPairWritable key,
@@ -396,8 +397,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 	}
 
-	static class MergeUserVectorsReducer
-			extends
+	static class MergeUserVectorsReducer extends
 			Reducer<IntPairWritable, VectorWritable, WritableComparable<?>, VectorWritable> {
 
 		private MultipleOutputs out;
@@ -405,10 +405,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		private final VectorWritable resultValue = new VectorWritable();
 
 		@Override
-    protected void setup(Context ctx) throws IOException, InterruptedException {
-      Configuration conf = ctx.getConfiguration();
-      out = new MultipleOutputs(ctx);
-    }
+		protected void setup(Context ctx) throws IOException, InterruptedException {
+			Configuration conf = ctx.getConfiguration();
+			out = new MultipleOutputs(ctx);
+		}
 
 		@Override
 		public void reduce(IntPairWritable key,
@@ -440,7 +440,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				InterruptedException {
 			usesLongIDs = ctx.getConfiguration().getBoolean(USES_LONG_IDS,
 					false);
-			numUserBlocks = ctx.getConfiguration().getInt(NUM_USER_BLOCKS, 10);
+			numUserBlocks = ctx.getConfiguration().getInt(NUM_BLOCKS, 10);
 		}
 
 		@Override
@@ -466,9 +466,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 	}
 
-		static class BlockTransposeMapper
-			extends
-			Mapper<IntWritable, VectorWritable, IntPairWritable, VectorWritable> {
+	static class BlockTransposeMapper extends
+		Mapper<IntWritable, VectorWritable, IntPairWritable, VectorWritable> {
 
 		private final IntPairWritable key = new IntPairWritable();
 
@@ -477,24 +476,25 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		@Override
 		protected void setup(Context ctx) throws IOException,
 				InterruptedException {
-			numItemBlocks = ctx.getConfiguration().getInt(NUM_ITEM_BLOCKS, 10);
+			numItemBlocks = ctx.getConfiguration().getInt(NUM_BLOCKS, 10);
 		}
 
 	 	@Override
-  	protected void map(IntWritable r, VectorWritable v, Context ctx) throws IOException, InterruptedException {
-    	int row = r.get();
-    	Iterator<Vector.Element> it = v.get().iterateNonZero();
-    	while (it.hasNext()) {
-      	Vector.Element e = it.next();
-      	RandomAccessSparseVector tmp = new RandomAccessSparseVector(Integer.MAX_VALUE, 1);
-      	tmp.setQuick(row, e.get());
-      	key.setFirst(e.index());
-      	key.setSecond(BlockPartitionUtil.getBlockID(e.index(), numItemBlocks))
-      	ctx.write(key, new VectorWritable(tmp));
-    	}
-  	}
-  }
-
+	 	protected void map(IntWritable r, VectorWritable v, Context ctx) throws IOException, InterruptedException {
+	 		int row = r.get();
+	 		
+	 		Iterator<Vector.Element> it = v.get().nonZeroes().iterator();
+	 		
+	 		while (it.hasNext()) {
+	 			Vector.Element e = it.next();
+	 			RandomAccessSparseVector tmp = new RandomAccessSparseVector(Integer.MAX_VALUE, 1);
+	 			tmp.setQuick(row, e.get());
+	 			key.setFirst(e.index());
+	 			key.setSecond(BlockPartitionUtil.getBlockID(e.index(), numItemBlocks));
+	 			ctx.write(key, new VectorWritable(tmp));
+	 		}
+	 	}
+	}
 
 	private void runSolver(Path ratings, Path output, Path pathToUorM,
 			Path pathToYty, int currentIteration, String matrixName,
@@ -508,7 +508,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		String name;
 
 		if (implicitFeedback) {
-			solverMapperClassInternal = SolveImplicitFeedbackMapper.class;
+			solverMapperClassInternal = BlockSolveImplicitFeedbackMapper.class;
 			name = "Recompute " + matrixName + ", iteration ("
 					+ currentIteration + '/' + numIterations + "), " + '('
 					+ numThreadsPerSolver + " threads, " + numFeatures
@@ -541,29 +541,28 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		JobControl control = new JobControl("BlockParallelALS");
 		for (int blockId = 0; blockId < numBlocks2; blockId++) {
 			// process each block
-			Path blockRatings = new Path(ratings.toString() + "/" + Integer.toString(blockId) + "-m-*";
-			Path blockRatingsOutput = new Path(output.toString() + "/" + Integer.toString(blockId);
+			Path blockRatings = new Path(ratings.toString() + "/" + Integer.toString(blockId) + "-m-*");
+			Path blockRatingsOutput = new Path(getTempPath("BlockRatingOutput").toString() + "/" + Integer.toString(blockId));
 			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-m-*");
 				
 			Job solveBlockUorI = prepareJob(blockRatings, blockRatingsOutput,
 						SequenceFileInputFormat.class,
 						MultithreadedSharingMapper.class, IntWritable.class,
 						VectorWritable.class, SequenceFileOutputFormat.class, name);
-				Configuration solverConf = solveBlockUorI.getConfiguration();
-				solverConf.set(LAMBDA, String.valueOf(lambda));
-				solverConf.set(ALPHA, String.valueOf(alpha));
-				solverConf.setInt(NUM_FEATURES, numFeatures);
-				solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
-				solverConf.set(PATH_TO_YTY, pathToYty.toString());
-				DistributedCache.addCacheFile(blockFixUorM.toUri(), solverConf);
+			Configuration solverConf = solveBlockUorI.getConfiguration();
+			solverConf.set(LAMBDA, String.valueOf(lambda));
+			solverConf.set(ALPHA, String.valueOf(alpha));
+			solverConf.setInt(NUM_FEATURES, numFeatures);
+			solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
+			solverConf.set(PATH_TO_YTY, pathToYty.toString());
+			DistributedCache.addCacheFile(blockFixUorM.toUri(), solverConf);
 				
-				MultithreadedMapper.setMapperClass(solveUorIinBlock,
+			MultithreadedMapper.setMapperClass(solveBlockUorI,
 						solverMapperClassInternal);
-				MultithreadedMapper.setNumberOfThreads(solveUorIinBlock,
+			MultithreadedMapper.setNumberOfThreads(solveBlockUorI,
 						numThreadsPerSolver);
 				
-				control.addJob(new ControlledJob(solverConf));
-			}
+			control.addJob(new ControlledJob(solverConf));
 		}
 		
 		control.run();
@@ -573,26 +572,26 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 
 		//TODO: map: Aggregate the block result
-		Job updateUorM = prepareJob(blockOutput, output,
-				SequenceFileInputFormat.class, IdentityMapper.class,
+		Job updateUorM = prepareJob(getTempPath("BlockRatingOutput"), output,
+				SequenceFileInputFormat.class, Mapper.class,
 				IntWritable.class, MatrixEntryWritable.class,
 				UpdateUorMReducer.class, IntWritable.class,
 				VectorWritable.class, SequenceFileOutputFormat.class);
 
 		// use multiple output to suport block
 		LazyOutputFormat.setOutputFormatClass(updateUorM, SequenceFileOutputFormat.class);
-    for (int blockId = 0; blockId < numBlocks1; blockId++) {
-      MultipleOutputs.addNamedOutput(updateUorM, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+		for (int blockId = 0; blockId < numBlocks1; blockId++) {
+			MultipleOutputs.addNamedOutput(updateUorM, Integer.toString(blockId), SequenceFileOutputFormat.class, 
       																IntWritable.class, VectorWritable.class);
-    }
+		}
 
 		updateUorM.setCombinerClass(UpdateUorMCombiner.class);
-		userRatings.getConfiguration().set(NUM_BLOCKS,
+		updateUorM.getConfiguration().set(NUM_BLOCKS,
 				String.valueOf(numBlocks1));
 
 		succeeded = updateUorM.waitForCompletion(true);
 		if (!succeeded) {
-			return -1;
+			//Todo: error handling
 		}
 
 	}
