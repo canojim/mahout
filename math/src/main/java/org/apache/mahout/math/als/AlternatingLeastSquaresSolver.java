@@ -55,7 +55,7 @@ public final class AlternatingLeastSquaresSolver {
     return solve(Ai, Vi);
   }
 
-  private static Vector solve(Matrix Ai, Matrix Vi) {
+  public static Vector solve(Matrix Ai, Matrix Vi) {
     return new QRDecomposition(Ai).solve(Vi).viewColumn(0);
   }
 

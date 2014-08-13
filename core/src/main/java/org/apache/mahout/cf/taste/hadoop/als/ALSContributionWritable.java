@@ -5,6 +5,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 import org.apache.hadoop.io.Writable;
+import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.MatrixWritable;
 
 public class ALSContributionWritable implements Writable {
@@ -17,7 +18,7 @@ public class ALSContributionWritable implements Writable {
 	}
 	
 	public ALSContributionWritable(MatrixWritable A, MatrixWritable b) {
-		this.A =A;
+		this.A = A;
 		this.b = b;		
 	}
 

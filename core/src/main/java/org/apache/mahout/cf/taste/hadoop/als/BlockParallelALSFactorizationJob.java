@@ -55,7 +55,6 @@ import org.apache.mahout.common.RandomUtils;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.mapreduce.MergeVectorsCombiner;
 import org.apache.mahout.common.mapreduce.MergeVectorsReducer;
-import org.apache.mahout.common.mapreduce.TransposeMapper;
 import org.apache.mahout.common.mapreduce.VectorSumCombiner;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.RandomAccessSparseVector;
@@ -380,7 +379,6 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		@Override
 		protected void setup(Context ctx) throws IOException, InterruptedException {
-			Configuration conf = ctx.getConfiguration();
 			out = new MultipleOutputs(ctx);
 		}
 
@@ -406,7 +404,6 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		@Override
 		protected void setup(Context ctx) throws IOException, InterruptedException {
-			Configuration conf = ctx.getConfiguration();
 			out = new MultipleOutputs(ctx);
 		}
 
@@ -504,7 +501,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		// necessary for local execution in the same JVM only
 		SharingMapper.reset();
 
-		Class<? extends Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable>> solverMapperClassInternal;
+		Class<? extends Mapper<IntWritable, VectorWritable, IntWritable, ALSContributionWritable>> solverMapperClassInternal;
 		String name;
 
 		if (implicitFeedback) {
@@ -514,11 +511,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 					+ numThreadsPerSolver + " threads, " + numFeatures
 					+ " features, implicit feedback)";
 		} else {
-			solverMapperClassInternal = SolveExplicitFeedbackMapper.class;
-			name = "Recompute " + matrixName + ", iteration ("
-					+ currentIteration + '/' + numIterations + "), " + '('
-					+ numThreadsPerSolver + " threads, " + numFeatures
-					+ " features, explicit feedback)";
+			//TODO: support explicit feedback
+			throw new RuntimeException("Explicit feedback currently not supported in block version.");
 		}
 
 		// prepareJob to calculate Y'Y
@@ -595,8 +589,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 
 		updateUorM.setCombinerClass(UpdateUorMCombiner.class);
+		updateUorM.getConfiguration().setInt(NUM_FEATURES, numFeatures);
 		updateUorM.getConfiguration().set(NUM_BLOCKS,
 				String.valueOf(numBlocks1));
+		updateUorM.getConfiguration().set(PATH_TO_YTY, pathToYty.toString());
 
 		succeeded = updateUorM.waitForCompletion(true);
 		if (!succeeded) {

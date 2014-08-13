@@ -25,6 +25,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.mahout.common.HadoopUtil;
 import org.apache.mahout.common.Pair;
@@ -32,10 +33,13 @@ import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.iterator.sequencefile.PathType;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirIterable;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirValueIterator;
+import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.als.AlternatingLeastSquaresSolver;
 import org.apache.mahout.math.function.Functions;
+import org.apache.mahout.math.hadoop.DistributedRowMatrix.MatrixEntryWritable;
 import org.apache.mahout.math.map.OpenIntObjectHashMap;
 
 import java.io.IOException;
@@ -105,4 +109,26 @@ final class ALS {
 
     return AlternatingLeastSquaresSolver.solve(featureVectors, ratings, lambda, numFeatures);
   }
+  
+	/* Y' Y */
+	/* Read pre-calculated Y'Y (using CalcYtY MapReduce) */
+	public static Matrix readYtransposeYFromHdfs(Path pathToYty, int numFeatures, Configuration conf) {
+
+		double[][] YtY = new double[numFeatures][numFeatures];
+		
+		boolean hasValue = false;
+		
+		for (Pair<NullWritable, MatrixEntryWritable> record : new SequenceFileDirIterable<NullWritable, MatrixEntryWritable>(
+				pathToYty, PathType.LIST, PathFilters.partFilter(), null, true, conf)) {
+			
+			MatrixEntryWritable entry = record.getSecond();
+			YtY[entry.getRow()][entry.getCol()] = entry.getVal();
+			
+			hasValue = true;
+		}
+		
+		Preconditions.checkState(hasValue, "Dense matrix is empty");
+		
+		return new DenseMatrix(YtY, true);
+	}
 }

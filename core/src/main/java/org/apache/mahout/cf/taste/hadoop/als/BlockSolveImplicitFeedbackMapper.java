@@ -28,30 +28,22 @@ import com.google.common.base.Preconditions;
 /** Solving mapper that can be safely executed using multiple threads */
 public class BlockSolveImplicitFeedbackMapper
     extends SharingMapper<IntWritable, VectorWritable, IntWritable, ALSContributionWritable,
-    BLockImplicitFeedbackAlternatingLeastSquaresSolver> {
+    BlockImplicitFeedbackAlternatingLeastSquaresSolver> {
 
-  private final ALSContributionWritable uiOrmj = new ALSContributionWritable();
-
-  @Override
-  protected void setup(Context ctx) throws IOException,
-        InterruptedException {
-    tokenPos = ctx.getConfiguration().getInt(TOKEN_POS, -1);
-    Preconditions.checkState(tokenPos >= 0);
-  }
- 
+  private final ALSContributionWritable uiOrmj = new ALSContributionWritable(); 
 
   @Override
-  BLockImplicitFeedbackAlternatingLeastSquaresSolver createSharedInstance(Context ctx) throws IOException {
+  BlockImplicitFeedbackAlternatingLeastSquaresSolver createSharedInstance(Context ctx) throws IOException {
     Configuration conf = ctx.getConfiguration();
 
-    double lambda = Double.parseDouble(conf.get(ParallelALSFactorizationJob.LAMBDA));
-    double alpha = Double.parseDouble(conf.get(ParallelALSFactorizationJob.ALPHA));
-    int numFeatures = conf.getInt(ParallelALSFactorizationJob.NUM_FEATURES, -1);
-    int numEntities = Integer.parseInt(conf.get(ParallelALSFactorizationJob.NUM_ENTITIES));
+    double lambda = Double.parseDouble(conf.get(BlockParallelALSFactorizationJob.LAMBDA));
+    double alpha = Double.parseDouble(conf.get(BlockParallelALSFactorizationJob.ALPHA));
+    int numFeatures = conf.getInt(BlockParallelALSFactorizationJob.NUM_FEATURES, -1);
+    int numEntities = Integer.parseInt(conf.get(BlockParallelALSFactorizationJob.NUM_ENTITIES));
     
     Preconditions.checkArgument(numFeatures > 0, "numFeatures must be greater then 0!");
     		
-    return new BLockImplicitFeedbackAlternatingLeastSquaresSolver(numFeatures, numEntities, lambda, alpha,
+    return new BlockImplicitFeedbackAlternatingLeastSquaresSolver(numFeatures, numEntities, lambda, alpha,
         ALS.readMatrixByRowsFromDistributedCache(numEntities, conf));
     
   }
@@ -59,7 +51,7 @@ public class BlockSolveImplicitFeedbackMapper
   @Override
   protected void map(IntWritable userOrItemID, VectorWritable ratingsWritable, Context ctx)
     throws IOException, InterruptedException {
-	DistributedImplicitFeedbackAlternatingLeastSquaresSolver solver = getSharedInstance();
+	BlockImplicitFeedbackAlternatingLeastSquaresSolver solver = getSharedInstance();
     uiOrmj.setA(solver.solveA(ratingsWritable.get()));
     uiOrmj.setb(solver.solveb(ratingsWritable.get()));
     ctx.write(userOrItemID, uiOrmj);

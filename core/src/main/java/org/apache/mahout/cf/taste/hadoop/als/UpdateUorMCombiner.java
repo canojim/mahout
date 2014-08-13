@@ -2,9 +2,13 @@ package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.IOException;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.mahout.math.hadoop.DistributedRowMatrix.MatrixEntryWritable;
+import org.apache.mahout.math.DenseMatrix;
+import org.apache.mahout.math.Matrix;
+
+import com.google.common.base.Preconditions;
 
 public class UpdateUorMCombiner extends Reducer<IntWritable, ALSContributionWritable, 
 		IntWritable, ALSContributionWritable> {
@@ -31,8 +35,8 @@ public class UpdateUorMCombiner extends Reducer<IntWritable, ALSContributionWrit
 			Matrix combinedb = new DenseMatrix(numFeatures, 1);
 			
 			for (ALSContributionWritable contribution: values) {
-				combinedA = combinedA.plus(contribution.getA());
-				combinedb = combinedb.plus(contribution.getb());
+				combinedA = combinedA.plus(contribution.getA().get());
+				combinedb = combinedb.plus(contribution.getb().get());
 			}	
 			
 			ctx.write(key, new ALSContributionWritable(combinedA, combinedb));

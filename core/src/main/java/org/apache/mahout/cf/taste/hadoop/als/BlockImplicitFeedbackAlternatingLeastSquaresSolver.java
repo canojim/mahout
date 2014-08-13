@@ -18,23 +18,13 @@
 package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.IOException;
-import java.util.Date;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.NullWritable;
-import org.apache.mahout.common.Pair;
-import org.apache.mahout.common.iterator.sequencefile.PathFilters;
-import org.apache.mahout.common.iterator.sequencefile.PathType;
-import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirIterable;
 import org.apache.mahout.math.DenseMatrix;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.Matrix;
-import org.apache.mahout.math.QRDecomposition;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.Vector.Element;
 import org.apache.mahout.math.function.Functions;
-import org.apache.mahout.math.hadoop.DistributedRowMatrix.MatrixEntryWritable;
 import org.apache.mahout.math.map.OpenIntObjectHashMap;
 
 import com.google.common.base.Preconditions;
@@ -50,9 +40,6 @@ public class BlockImplicitFeedbackAlternatingLeastSquaresSolver {
 	private final double lambda;
 
 	private OpenIntObjectHashMap<Vector> Y;
-
-	private static final Logger log = LoggerFactory.getLogger(
-									BlockImplicitFeedbackAlternatingLeastSquaresSolver.class);	
 
 	/*
 	 * public DistributedImplicitFeedbackAlternatingLeastSquaresSolver(int

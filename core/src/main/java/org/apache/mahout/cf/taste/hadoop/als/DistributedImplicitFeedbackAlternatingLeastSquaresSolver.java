@@ -80,7 +80,7 @@ public class DistributedImplicitFeedbackAlternatingLeastSquaresSolver {
 		long start = System.currentTimeMillis();			
 		System.out.println("readYtransposeYFromHdfs Start time: " + new Date(start));
 		
-		this.YtransposeY = readYtransposeYFromHdfs(pathToYty);
+		this.YtransposeY = ALS.readYtransposeYFromHdfs(pathToYty, this.numFeatures, this.conf);
 		
 		long duration = System.currentTimeMillis() - start;
 		System.out.println("readYtransposeYFromHdfs duration: " + duration);
@@ -127,8 +127,8 @@ public class DistributedImplicitFeedbackAlternatingLeastSquaresSolver {
 		return featureMatrix;
 	}
 
-	/* Y' Y */
-	/* Read pre-calculated Y'Y (using CalcYtY MapReduce) */
+/*	 Y' Y 
+	 Read pre-calculated Y'Y (using CalcYtY MapReduce) 
 	private Matrix readYtransposeYFromHdfs(Path pathToYty) {
 
 		double[][] YtY = new double[numFeatures][numFeatures];
@@ -147,7 +147,7 @@ public class DistributedImplicitFeedbackAlternatingLeastSquaresSolver {
 		Preconditions.checkState(hasValue, "Dense matrix is empty");
 		
 		return new DenseMatrix(YtY, true);
-	}
+	}*/
 
 	/* Y' Y */
 /*	private Matrix getYtransposeY(OpenIntObjectHashMap<Vector> Y) {
