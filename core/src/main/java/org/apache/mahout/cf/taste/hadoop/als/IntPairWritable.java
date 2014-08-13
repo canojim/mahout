@@ -48,8 +48,7 @@ public class IntPairWritable implements WritableComparable<IntPairWritable> {
 		
 		final int prime = 31;
 	    int result = 1;
-	    
-	    result = prime * result + this.hashCode();
+	    	    
 	    result = prime * result + first;
 	    result = prime * result + second;
 	    return result;
@@ -79,6 +78,12 @@ public class IntPairWritable implements WritableComparable<IntPairWritable> {
 	public void setSecond(int second) {
 		this.second = second;
 	}
+
+	@Override
+	public String toString() {
+		return Integer.toString(first) + "," + Integer.toString(second);
+	}
+
 
 	
 }

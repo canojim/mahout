@@ -226,7 +226,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		/* create A' */
 		Job itemRatings = prepareJob(getInputPath(), pathToItemRatings(),
 				TextInputFormat.class, ItemRatingVectorsMapper.class,
-				IntWritable.class, VectorWritable.class,
+				IntPairWritable.class, VectorWritable.class,
 				VectorSumReducer.class, IntWritable.class,
 				VectorWritable.class, SequenceFileOutputFormat.class);
 
@@ -240,8 +240,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		itemRatings.setCombinerClass(VectorSumCombiner.class);
 		itemRatings.getConfiguration().set(USES_LONG_IDS,
 				String.valueOf(usesLongIDs));
-		itemRatings.getConfiguration().set(NUM_BLOCKS,
-				String.valueOf(numUserBlocks));
+		itemRatings.getConfiguration().setInt(NUM_BLOCKS,
+				numUserBlocks);
 		boolean succeeded = itemRatings.waitForCompletion(true);
 		if (!succeeded) {
 			return -1;
@@ -249,7 +249,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		/* create A */
 		Job userRatings = prepareJob(pathToItemRatings(), pathToUserRatings(),
-				BlockTransposeMapper.class, IntWritable.class, VectorWritable.class,
+				BlockTransposeMapper.class, IntPairWritable.class, VectorWritable.class,
 				MergeUserVectorsReducer.class, IntWritable.class,
 				VectorWritable.class);
 
@@ -387,7 +387,9 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				Iterable<VectorWritable> values, Context ctx)
 				throws IOException, InterruptedException {
 			Vector sum = Vectors.sum(values.iterator());
-
+			
+			System.out.println("reduce key: " + key.toString());
+						
 			resultKey.set(key.getFirst());
 			resultValue.set(new SequentialAccessSparseVector(sum));
 
@@ -454,6 +456,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 			key.setFirst(itemID);
 			key.setSecond(BlockPartitionUtil.getBlockID(itemID, numUserBlocks));
+			
+			System.out.println("key: " + key.toString());
 			value.set(ratings);
 
 			ctx.write(key, value);
