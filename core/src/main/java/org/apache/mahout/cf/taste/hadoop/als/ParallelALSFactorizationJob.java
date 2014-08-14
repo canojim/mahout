@@ -104,8 +104,6 @@ public class ParallelALSFactorizationJob extends AbstractJob {
 	private static final Logger log = LoggerFactory
 			.getLogger(ParallelALSFactorizationJob.class);
 
-	static final String NUM_FEATURES = ParallelALSFactorizationJob.class
-			.getName() + ".numFeatures";
 	static final String LAMBDA = ParallelALSFactorizationJob.class.getName()
 			+ ".lambda";
 	static final String ALPHA = ParallelALSFactorizationJob.class.getName()
@@ -436,7 +434,7 @@ public class ParallelALSFactorizationJob extends AbstractJob {
 		calYtY.setCombinerClass(CalcYtyCombiner.class);
 
 		Configuration calYtYConf = calYtY.getConfiguration();
-		calYtYConf.setInt(NUM_FEATURES, numFeatures);
+		calYtYConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 
 		boolean succeeded = calYtY.waitForCompletion(true);
 		if (!succeeded) {
@@ -451,7 +449,7 @@ public class ParallelALSFactorizationJob extends AbstractJob {
 		Configuration solverConf = solverForUorI.getConfiguration();
 		solverConf.set(LAMBDA, String.valueOf(lambda));
 		solverConf.set(ALPHA, String.valueOf(alpha));
-		solverConf.setInt(NUM_FEATURES, numFeatures);
+		solverConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 		solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
 		solverConf.set(PATH_TO_YTY, pathToYty.toString());
 

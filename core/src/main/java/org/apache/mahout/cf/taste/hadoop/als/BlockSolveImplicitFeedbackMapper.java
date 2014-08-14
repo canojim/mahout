@@ -38,7 +38,7 @@ public class BlockSolveImplicitFeedbackMapper
 
     double lambda = Double.parseDouble(conf.get(BlockParallelALSFactorizationJob.LAMBDA));
     double alpha = Double.parseDouble(conf.get(BlockParallelALSFactorizationJob.ALPHA));
-    int numFeatures = conf.getInt(BlockParallelALSFactorizationJob.NUM_FEATURES, -1);
+    int numFeatures = conf.getInt(CalcYtYMapper.NUM_FEATURES, -1);
     int numEntities = Integer.parseInt(conf.get(BlockParallelALSFactorizationJob.NUM_ENTITIES));
     
     Preconditions.checkArgument(numFeatures > 0, "numFeatures must be greater then 0!");

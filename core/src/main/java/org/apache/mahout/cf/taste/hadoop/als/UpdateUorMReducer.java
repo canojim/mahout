@@ -12,14 +12,13 @@ import org.apache.mahout.math.Matrix;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.als.AlternatingLeastSquaresSolver;
-import org.apache.mahout.math.hadoop.DistributedRowMatrix.MatrixEntryWritable;
 
 import com.google.common.base.Preconditions;
 
 public class UpdateUorMReducer extends Reducer<IntWritable, ALSContributionWritable, 
 		IntWritable, VectorWritable> {
 
-	private MultipleOutputs out;
+	private MultipleOutputs<IntWritable,VectorWritable> out;
 	private int numFeatures;
 	private int numBlocks;
 	private Matrix YtransposeY;
@@ -28,7 +27,7 @@ public class UpdateUorMReducer extends Reducer<IntWritable, ALSContributionWrita
 	protected void setup(Context context) throws IOException,
 			InterruptedException {
 		Configuration conf = context.getConfiguration();
-		numFeatures = conf.getInt(BlockParallelALSFactorizationJob.NUM_FEATURES, -1);
+		numFeatures = conf.getInt(CalcYtYMapper.NUM_FEATURES, -1);
 		numBlocks = conf.getInt(BlockParallelALSFactorizationJob.NUM_BLOCKS, 10);
 
 		Preconditions.checkArgument(numFeatures > 0,
@@ -37,7 +36,7 @@ public class UpdateUorMReducer extends Reducer<IntWritable, ALSContributionWrita
 		Path pathToYty = new Path(conf.get(BlockParallelALSFactorizationJob.PATH_TO_YTY));
 		this.YtransposeY = ALS.readYtransposeYFromHdfs(pathToYty, numFeatures, conf);
 
-		out = new MultipleOutputs(context);
+		out = new MultipleOutputs<IntWritable,VectorWritable>(context);
 	}
 
 	
@@ -59,6 +58,13 @@ public class UpdateUorMReducer extends Reducer<IntWritable, ALSContributionWrita
 			int blockId = BlockPartitionUtil.getBlockID(key.get(), numBlocks);
 
 			out.write(Integer.toString(blockId), key, new VectorWritable(result));
+	}
+
+
+	@Override
+	protected void cleanup(Context context)
+			throws IOException, InterruptedException {
+		out.close();
 	}
 
 	

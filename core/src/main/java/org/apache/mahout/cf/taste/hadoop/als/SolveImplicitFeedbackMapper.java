@@ -38,7 +38,7 @@ public class SolveImplicitFeedbackMapper
 
     double lambda = Double.parseDouble(conf.get(ParallelALSFactorizationJob.LAMBDA));
     double alpha = Double.parseDouble(conf.get(ParallelALSFactorizationJob.ALPHA));
-    int numFeatures = conf.getInt(ParallelALSFactorizationJob.NUM_FEATURES, -1);
+    int numFeatures = conf.getInt(CalcYtYMapper.NUM_FEATURES, -1);
     int numEntities = Integer.parseInt(conf.get(ParallelALSFactorizationJob.NUM_ENTITIES));
     String pathToYty = conf.get(ParallelALSFactorizationJob.PATH_TO_YTY);
     

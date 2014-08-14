@@ -19,7 +19,7 @@ public class UpdateUorMCombiner extends Reducer<IntWritable, ALSContributionWrit
 	protected void setup(Context context) throws IOException,
 			InterruptedException {
 		Configuration conf = context.getConfiguration();
-		numFeatures = conf.getInt(ParallelALSFactorizationJob.NUM_FEATURES, -1);
+		numFeatures = conf.getInt(CalcYtYMapper.NUM_FEATURES, -1);
 
 		Preconditions.checkArgument(numFeatures > 0,
 				"numFeatures must be greater then 0!");

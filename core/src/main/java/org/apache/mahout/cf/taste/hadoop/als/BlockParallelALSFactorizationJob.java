@@ -34,7 +34,6 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -108,8 +107,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	private static final Logger log = LoggerFactory
 			.getLogger(BlockParallelALSFactorizationJob.class);
 
-	static final String NUM_FEATURES = BlockParallelALSFactorizationJob.class
-			.getName() + ".numFeatures";
+
 	static final String LAMBDA = BlockParallelALSFactorizationJob.class.getName()
 			+ ".lambda";
 	static final String ALPHA = BlockParallelALSFactorizationJob.class.getName()
@@ -197,7 +195,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		 * (items x features) is the representation of items in the feature
 		 * space
 		 */
-
+//TODO: Remove this
+		boolean succeeded = false;
+		
+if (false) {
 		if (usesLongIDs) {
 			Job mapUsers = prepareJob(getInputPath(),
 					getOutputPath("userIDIndex"), TextInputFormat.class,
@@ -219,9 +220,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 					String.valueOf(TasteHadoopUtils.ITEM_ID_POS));
 			mapItems.waitForCompletion(true);
 		}
-		
-		//TODO: partition ratings
-		
+} //if false		
+		//input content: uID,mID,rating E.g. 21349098,444875844,2 21349098,1436281125,1 21349098,1856996949,1
+		//output filename: als/tmp/itemRatings/blockID-r-nnnnn E.g. 0-r-00000 1-r-00000
+		//output content: uID, Vector of mID:rating E.g. 21349098 {444875844:2.0,1436281125:1.0,1856996949:1.0}
 
 		/* create A' */
 		Job itemRatings = prepareJob(getInputPath(), pathToItemRatings(),
@@ -242,10 +244,13 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				String.valueOf(usesLongIDs));
 		itemRatings.getConfiguration().setInt(NUM_BLOCKS,
 				numUserBlocks);
-		boolean succeeded = itemRatings.waitForCompletion(true);
+		succeeded = itemRatings.waitForCompletion(true);
 		if (!succeeded) {
 			return -1;
 		}
+				
+		//output file: /als/out/userRatings/0-r-00000
+		//output file content:
 
 		/* create A */
 		Job userRatings = prepareJob(pathToItemRatings(), pathToUserRatings(),
@@ -253,7 +258,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				MergeUserVectorsReducer.class, IntWritable.class,
 				VectorWritable.class);
 
-		// use multiple output to suport block
+		// use multiple output to support block
 		LazyOutputFormat.setOutputFormatClass(userRatings, SequenceFileOutputFormat.class);
 		for (int blockId = 0; blockId < numItemBlocks; blockId++) {
 			MultipleOutputs.addNamedOutput(userRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
@@ -269,6 +274,12 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			return -1;
 		}
 
+		//TODO: Remove this
+		//if (true)
+		//	throw new RuntimeException("Debug until here");
+		
+		//als/tmp/averageRatings/part-r-00000
+		
 		// TODO this could be fiddled into one of the upper jobs
 		Job averageItemRatings = prepareJob(pathToItemRatings(),
 				getTempPath("averageRatings"), AverageRatingMapper.class,
@@ -371,15 +382,15 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	}
 
 	static class VectorSumReducer extends
-		Reducer<IntPairWritable, VectorWritable, WritableComparable<?>, VectorWritable> {
+		Reducer<IntPairWritable, VectorWritable, IntWritable, VectorWritable> { //WritableComparable<?>
 
-		private MultipleOutputs out;
+		private MultipleOutputs<IntWritable, VectorWritable> out;
 		private final IntWritable resultKey = new IntWritable();
 		private final VectorWritable resultValue = new VectorWritable();
 
 		@Override
 		protected void setup(Context ctx) throws IOException, InterruptedException {
-			out = new MultipleOutputs(ctx);
+			out = new MultipleOutputs<IntWritable, VectorWritable>(ctx);
 		}
 
 		@Override
@@ -388,25 +399,31 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				throws IOException, InterruptedException {
 			Vector sum = Vectors.sum(values.iterator());
 			
-			System.out.println("reduce key: " + key.toString());
-						
 			resultKey.set(key.getFirst());
 			resultValue.set(new SequentialAccessSparseVector(sum));
-
+			//System.out.println("x reduce: " + Integer.toString(key.getSecond()) + " key: " + resultKey + " value: " + resultValue);
 			out.write(Integer.toString(key.getSecond()), resultKey, resultValue);
 		}
+
+		@Override
+		protected void cleanup(Context context)
+				throws IOException, InterruptedException {
+			out.close();
+		}
+		
+		
 	}
 
 	static class MergeUserVectorsReducer extends
-			Reducer<IntPairWritable, VectorWritable, WritableComparable<?>, VectorWritable> {
+			Reducer<IntPairWritable, VectorWritable, IntWritable, VectorWritable> {
 
-		private MultipleOutputs out;
+		private MultipleOutputs<IntWritable,VectorWritable> out;
 		private final IntWritable resultKey = new IntWritable();
 		private final VectorWritable resultValue = new VectorWritable();
 
 		@Override
 		protected void setup(Context ctx) throws IOException, InterruptedException {
-			out = new MultipleOutputs(ctx);
+			out = new MultipleOutputs<IntWritable,VectorWritable>(ctx);
 		}
 
 		@Override
@@ -419,8 +436,17 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			resultValue.set(new SequentialAccessSparseVector(merged));
 			out.write(Integer.toString(key.getSecond()), resultKey, resultValue);
 
+			System.out.println("MergeUserVectorsReducer: " + Integer.toString(key.getSecond()) + " key: " + resultKey + " value: " + resultValue);
 			ctx.getCounter(Stats.NUM_USERS).increment(1);
 		}
+
+		@Override
+		protected void cleanup(Context context)
+				throws IOException, InterruptedException {
+			out.close();
+		}
+		
+		
 	}
 
 	static class ItemRatingVectorsMapper extends
@@ -455,9 +481,9 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			ratings.setQuick(userID, rating);
 
 			key.setFirst(itemID);
-			key.setSecond(BlockPartitionUtil.getBlockID(itemID, numUserBlocks));
+			key.setSecond(BlockPartitionUtil.getBlockID(userID, numUserBlocks));
 			
-			System.out.println("key: " + key.toString());
+			//System.out.println("key: " + key.toString());
 			value.set(ratings);
 
 			ctx.write(key, value);
@@ -491,7 +517,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	 			RandomAccessSparseVector tmp = new RandomAccessSparseVector(Integer.MAX_VALUE, 1);
 	 			tmp.setQuick(row, e.get());
 	 			key.setFirst(e.index());
-	 			key.setSecond(BlockPartitionUtil.getBlockID(e.index(), numItemBlocks));
+	 			key.setSecond(BlockPartitionUtil.getBlockID(row, numItemBlocks));
 	 			ctx.write(key, new VectorWritable(tmp));
 	 		}
 	 	}
@@ -518,7 +544,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			//TODO: support explicit feedback
 			throw new RuntimeException("Explicit feedback currently not supported in block version.");
 		}
-
+		
+		boolean succeeded = false;
+		
+//if (false) {
 		// prepareJob to calculate Y'Y
 		Job calYtY = prepareJob(pathToUorM, pathToYty,
 				SequenceFileInputFormat.class, CalcYtYMapper.class,
@@ -529,17 +558,20 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		calYtY.setCombinerClass(CalcYtyCombiner.class);
 
 		Configuration calYtYConf = calYtY.getConfiguration();
-		calYtYConf.setInt(NUM_FEATURES, numFeatures);
+		System.out.println("numFeatures: " + numFeatures);
+		
+		calYtYConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 
-		boolean succeeded = calYtY.waitForCompletion(true);
+		succeeded = calYtY.waitForCompletion(true);
 		if (!succeeded) {
 			throw new IllegalStateException("calYtY Job failed!");
 		}
-		
+//} // if false
+
 		JobControl control = new JobControl("BlockParallelALS");
 		for (int blockId = 0; blockId < numBlocks2; blockId++) {
 			// process each block
-			Path blockRatings = new Path(ratings.toString() + "/" + Integer.toString(blockId) + "-m-*");
+			Path blockRatings = new Path(ratings.toString() + "/" + Integer.toString(blockId) + "-r-*");
 			Path blockRatingsOutput = new Path(getTempPath("BlockRatingOutput").toString() + "/" + Integer.toString(blockId));
 			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-m-*");
 				
@@ -550,13 +582,17 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			Configuration solverConf = solveBlockUorI.getConfiguration();
 			solverConf.set(LAMBDA, String.valueOf(lambda));
 			solverConf.set(ALPHA, String.valueOf(alpha));
-			solverConf.setInt(NUM_FEATURES, numFeatures);
+			solverConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 			solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
 
 			FileSystem fs = FileSystem.get(blockFixUorM.toUri(), solverConf);
-			FileStatus[] parts = fs
+/*			FileStatus[] parts = fs
 				.listStatus(blockFixUorM, PathFilters.partFilter());
+*/			
+			FileStatus[] parts = fs.globStatus(blockFixUorM);
+
 			for (FileStatus part : parts) {
+				System.out.println("Adding {} to distributed cache: " + part.getPath().toString());
 				if (log.isDebugEnabled()) {
 					log.debug("Adding {} to distributed cache", part.getPath()
 						.toString());
@@ -571,7 +607,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				
 			control.addJob(new ControlledJob(solverConf));
 		}
-		
+				
 		control.run();
 
 		if (!control.allFinished()) {
@@ -593,14 +629,14 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 
 		updateUorM.setCombinerClass(UpdateUorMCombiner.class);
-		updateUorM.getConfiguration().setInt(NUM_FEATURES, numFeatures);
+		updateUorM.getConfiguration().setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 		updateUorM.getConfiguration().set(NUM_BLOCKS,
 				String.valueOf(numBlocks1));
 		updateUorM.getConfiguration().set(PATH_TO_YTY, pathToYty.toString());
 
 		succeeded = updateUorM.waitForCompletion(true);
 		if (!succeeded) {
-			//Todo: error handling
+			throw new RuntimeException("updateUorM job failed!");
 		}
 
 	}

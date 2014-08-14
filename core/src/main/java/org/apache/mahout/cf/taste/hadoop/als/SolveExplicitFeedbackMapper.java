@@ -46,7 +46,7 @@ public class SolveExplicitFeedbackMapper
   @Override
   protected void setup(Mapper.Context ctx) throws IOException, InterruptedException {
     lambda = Double.parseDouble(ctx.getConfiguration().get(ParallelALSFactorizationJob.LAMBDA));
-    numFeatures = ctx.getConfiguration().getInt(ParallelALSFactorizationJob.NUM_FEATURES, -1);
+    numFeatures = ctx.getConfiguration().getInt(CalcYtYMapper.NUM_FEATURES, -1);
     Preconditions.checkArgument(numFeatures > 0, "numFeatures must be greater then 0!");
   }
 

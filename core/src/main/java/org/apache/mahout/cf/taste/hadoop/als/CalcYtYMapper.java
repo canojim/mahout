@@ -34,13 +34,16 @@ public class CalcYtYMapper
 		extends
 		Mapper<IntWritable, VectorWritable, MatrixEntryWritable, DoubleWritable> {
 
+	static final String NUM_FEATURES = CalcYtYMapper.class
+			.getName() + ".numFeatures";
+	
 	int numFeatures;
 
 	@Override
 	protected void setup(Context context) throws IOException,
 			InterruptedException {
 		Configuration conf = context.getConfiguration();
-		numFeatures = conf.getInt(ParallelALSFactorizationJob.NUM_FEATURES, -1);
+		numFeatures = conf.getInt(NUM_FEATURES, -1);
 
 		Preconditions.checkArgument(numFeatures > 0,
 				"numFeatures must be greater then 0!");
