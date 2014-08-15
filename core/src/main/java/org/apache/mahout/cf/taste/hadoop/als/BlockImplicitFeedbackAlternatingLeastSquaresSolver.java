@@ -78,6 +78,7 @@ public class BlockImplicitFeedbackAlternatingLeastSquaresSolver {
 		OpenIntObjectHashMap<Vector> CuMinusIY = new OpenIntObjectHashMap<Vector>(
 				userRatings.getNumNondefaultElements());
 		for (Element e : userRatings.nonZeroes()) {
+			//System.out.println("e.index(): " + e.index() + ", Y.get(e.index()): " + Y.get(e.index()));
 			CuMinusIY.put(e.index(),
 					Y.get(e.index()).times(confidence(e.get()) - 1));
 		}

@@ -18,6 +18,7 @@
 package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,6 @@ import org.apache.mahout.cf.taste.impl.common.FullRunningAverage;
 import org.apache.mahout.cf.taste.impl.common.RunningAverage;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.RandomUtils;
-import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.mapreduce.MergeVectorsCombiner;
 import org.apache.mahout.common.mapreduce.MergeVectorsReducer;
 import org.apache.mahout.common.mapreduce.VectorSumCombiner;
@@ -195,10 +195,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		 * (items x features) is the representation of items in the feature
 		 * space
 		 */
-//TODO: Remove this
 		boolean succeeded = false;
 		
-if (false) {
 		if (usesLongIDs) {
 			Job mapUsers = prepareJob(getInputPath(),
 					getOutputPath("userIDIndex"), TextInputFormat.class,
@@ -220,10 +218,10 @@ if (false) {
 					String.valueOf(TasteHadoopUtils.ITEM_ID_POS));
 			mapItems.waitForCompletion(true);
 		}
-} //if false		
 		//input content: uID,mID,rating E.g. 21349098,444875844,2 21349098,1436281125,1 21349098,1856996949,1
 		//output filename: als/tmp/itemRatings/blockID-r-nnnnn E.g. 0-r-00000 1-r-00000
 		//output content: uID, Vector of mID:rating E.g. 21349098 {444875844:2.0,1436281125:1.0,1856996949:1.0}
+
 
 		/* create A' */
 		Job itemRatings = prepareJob(getInputPath(), pathToItemRatings(),
@@ -273,10 +271,6 @@ if (false) {
 		if (!succeeded) {
 			return -1;
 		}
-
-		//TODO: Remove this
-		//if (true)
-		//	throw new RuntimeException("Debug until here");
 		
 		//als/tmp/averageRatings/part-r-00000
 		
@@ -300,10 +294,9 @@ if (false) {
 				.getValue();
 
 		log.info("Found {} users and {} items", numUsers, numItems);
-
 		
 		/* create an initial M */
-		initializeM(averageRatings, numItems, numItemBlocks);
+		initializeBlockM(averageRatings, numItemBlocks);		
 
 		for (int currentIteration = 0; currentIteration < numIterations; currentIteration++) {
 			/* broadcast M, read A row-wise, recompute U row-wise */
@@ -311,34 +304,27 @@ if (false) {
 					numIterations);
 			runSolver(pathToUserRatings(), pathToU(currentIteration),
 					pathToM(currentIteration - 1),
-					pathToYtY("UYtY", currentIteration), currentIteration, "U",
+					pathToPrefix("UYtY", currentIteration), currentIteration, "U",
 					numItems, numUserBlocks, numItemBlocks);
 			/* broadcast U, read A' row-wise, recompute M row-wise */
 			log.info("Recomputing M (iteration {}/{})", currentIteration,
 					numIterations);
 			runSolver(pathToItemRatings(), pathToM(currentIteration),
 					pathToU(currentIteration),
-					pathToYtY("MYtY", currentIteration), currentIteration, "M",
+					pathToPrefix("MYtY", currentIteration), currentIteration, "M",
 					numUsers, numUserBlocks, numItemBlocks);
 		}
 
 		return 0;
 	}
 
-	/**
-	 * 
-	 * Change Log: Split to 100 parts.
-	 * @param averageRatings
-	 * @param numEntity
-	 * @throws IOException
-	 */
-	private void initializeM(Vector averageRatings, int numEntity, int numItemBlocks)
+	private void initializeM(Vector averageRatings, String partName)
 			throws IOException {
 
-		final int TOTAL_PART_NUM = 100;
+		final int TOTAL_PART_NUM = 10;
 
 		Random random = RandomUtils.getRandom();
-		int partSize = (int) Math.ceil(numEntity / TOTAL_PART_NUM);
+		int partSize = (int) Math.ceil(averageRatings.getNumNondefaultElements() / TOTAL_PART_NUM);
 
 		FileSystem fs = FileSystem.get(pathToM(-1).toUri(), getConf());
 		SequenceFile.Writer writer = null;
@@ -352,7 +338,6 @@ if (false) {
 				for (Vector.Element e : averageRatings.nonZeroes()) {
 					
 					long partId = (count++)/partSize;
-					int partName = BlockPartitionUtil.getBlockID(e.index(), numItemBlocks);
 					
 					if (partId != prevPartId) {
 						
@@ -360,7 +345,7 @@ if (false) {
 							Closeables.close(writer, false);
 						}
 						
-						String partPath = Integer.toString(partName) + "-m-" + String.format("%05d", partId);
+						String partPath = partName + "-r-" + String.format("%05d", partId);
 						writer = new SequenceFile.Writer(fs, getConf(), new Path(
 								pathToM(-1), partPath), IntWritable.class,
 								VectorWritable.class);
@@ -379,7 +364,39 @@ if (false) {
 		} finally {
 			Closeables.close(writer, false);
 		}
-	}
+	}	
+		
+	/**
+	 * 
+	 * Change Log: Split to 100 parts.
+	 * @param averageRatings
+	 * @param numEntity
+	 * @throws IOException
+	 */
+	private void initializeBlockM(Vector averageRatings, int numItemBlocks)
+			throws IOException {
+
+		HashMap<String, Vector> partMap = new HashMap<String, Vector>();		
+		for (Vector.Element e : averageRatings.nonZeroes()) {
+					
+			int partName = BlockPartitionUtil.getBlockID(e.index(), numItemBlocks);
+					
+			Vector blockRatings = partMap.get(Integer.toString(partName));
+			if (blockRatings == null) {
+				blockRatings = new RandomAccessSparseVector(averageRatings.getNumNondefaultElements(), 1);
+				partMap.put(Integer.toString(partName), blockRatings);
+			}
+			
+			blockRatings.setQuick(e.index(), e.get());
+		}
+				
+		Iterator it = partMap.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<String, Vector> pairs = (Map.Entry<String, Vector>)it.next();
+			initializeM(pairs.getValue(), pairs.getKey());
+			it.remove(); // avoids a ConcurrentModificationException
+		}
+	}	
 
 	static class VectorSumReducer extends
 		Reducer<IntPairWritable, VectorWritable, IntWritable, VectorWritable> { //WritableComparable<?>
@@ -436,7 +453,7 @@ if (false) {
 			resultValue.set(new SequentialAccessSparseVector(merged));
 			out.write(Integer.toString(key.getSecond()), resultKey, resultValue);
 
-			System.out.println("MergeUserVectorsReducer: " + Integer.toString(key.getSecond()) + " key: " + resultKey + " value: " + resultValue);
+			//System.out.println("MergeUserVectorsReducer: " + Integer.toString(key.getSecond()) + " key: " + resultKey + " value: " + resultValue);
 			ctx.getCounter(Stats.NUM_USERS).increment(1);
 		}
 
@@ -547,7 +564,6 @@ if (false) {
 		
 		boolean succeeded = false;
 		
-//if (false) {
 		// prepareJob to calculate Y'Y
 		Job calYtY = prepareJob(pathToUorM, pathToYty,
 				SequenceFileInputFormat.class, CalcYtYMapper.class,
@@ -558,27 +574,31 @@ if (false) {
 		calYtY.setCombinerClass(CalcYtyCombiner.class);
 
 		Configuration calYtYConf = calYtY.getConfiguration();
-		System.out.println("numFeatures: " + numFeatures);
+		//System.out.println("numFeatures: " + numFeatures);
 		
 		calYtYConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 
+		log.info("Starting YtY job");
 		succeeded = calYtY.waitForCompletion(true);
 		if (!succeeded) {
 			throw new IllegalStateException("calYtY Job failed!");
 		}
-//} // if false
 
 		JobControl control = new JobControl("BlockParallelALS");
+		
+		String blockOutputName = "BlockRatingOutput-" + matrixName + "-" + Integer.toString(currentIteration-1);
+		
 		for (int blockId = 0; blockId < numBlocks2; blockId++) {
 			// process each block
 			Path blockRatings = new Path(ratings.toString() + "/" + Integer.toString(blockId) + "-r-*");
-			Path blockRatingsOutput = new Path(getTempPath("BlockRatingOutput").toString() + "/" + Integer.toString(blockId));
-			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-m-*");
+			
+			Path blockRatingsOutput = new Path(getTempPath(blockOutputName).toString() + "/" + Integer.toString(blockId));
+			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-r-*");
 				
 			Job solveBlockUorI = prepareJob(blockRatings, blockRatingsOutput,
 						SequenceFileInputFormat.class,
 						MultithreadedSharingMapper.class, IntWritable.class,
-						VectorWritable.class, SequenceFileOutputFormat.class, name);
+						ALSContributionWritable.class, SequenceFileOutputFormat.class, name + " blockId: " + blockId);
 			Configuration solverConf = solveBlockUorI.getConfiguration();
 			solverConf.set(LAMBDA, String.valueOf(lambda));
 			solverConf.set(ALPHA, String.valueOf(alpha));
@@ -586,13 +606,12 @@ if (false) {
 			solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
 
 			FileSystem fs = FileSystem.get(blockFixUorM.toUri(), solverConf);
-/*			FileStatus[] parts = fs
-				.listStatus(blockFixUorM, PathFilters.partFilter());
-*/			
+			
 			FileStatus[] parts = fs.globStatus(blockFixUorM);
-
+			
+			log.info("Pushing " + parts.length + " files to distributed cache.");
 			for (FileStatus part : parts) {
-				System.out.println("Adding {} to distributed cache: " + part.getPath().toString());
+				//System.out.println("Adding {} to distributed cache: " + part.getPath().toString());
 				if (log.isDebugEnabled()) {
 					log.debug("Adding {} to distributed cache", part.getPath()
 						.toString());
@@ -607,15 +626,28 @@ if (false) {
 				
 			control.addJob(new ControlledJob(solverConf));
 		}
+
+		Thread t = new Thread(control);
+		log.info("Starting " + numBlocks2 + " block rating jobs.");
+		t.start();
 				
-		control.run();
-
-		if (!control.allFinished()) {
-			throw new IllegalStateException("Job failed: " + control.getFailedJobList());
+		while (!control.allFinished()) {
+			Thread.sleep(1000);
 		}
-
-		//TODO: map: Aggregate the block result
-		Job updateUorM = prepareJob(getTempPath("BlockRatingOutput"), output,
+						
+		List<ControlledJob> failedJob = control.getFailedJobList();
+		
+		if (failedJob != null && failedJob.size() > 0) {
+			throw new IllegalStateException("control job failed: " + failedJob);
+		} else {
+			log.info("control job finished");
+		}
+		
+		control.stop();
+		
+		log.info("Aggregating block result");
+		Path updateInputPath = new Path(getTempPath(blockOutputName).toString() + "/*/");
+		Job updateUorM = prepareJob(updateInputPath, output,
 				SequenceFileInputFormat.class, Mapper.class,
 				IntWritable.class, ALSContributionWritable.class,
 				UpdateUorMReducer.class, IntWritable.class,
@@ -714,7 +746,7 @@ if (false) {
 				: getTempPath("U-" + iteration);
 	}
 
-	private Path pathToYtY(String prefix, int iteration) {
+	private Path pathToPrefix(String prefix, int iteration) {
 		return iteration == numIterations - 1 ? getOutputPath(prefix)
 				: getTempPath(prefix + iteration);
 	}

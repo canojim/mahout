@@ -71,6 +71,8 @@ final class ALS {
 
     for (Path cachedFile : cachedFiles) {
 
+      //System.out.println("Reading cache file: " + cachedFile.toString());
+      
       SequenceFile.Reader reader = null;
       try {
         reader = new SequenceFile.Reader(localFs, cachedFile, conf);
