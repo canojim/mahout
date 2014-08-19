@@ -146,8 +146,8 @@ public class FactorizationEvaluator extends AbstractJob {
       Path pathToU = new Path(conf.get(USER_FEATURES_PATH));
       Path pathToM = new Path(conf.get(ITEM_FEATURES_PATH));
 
-      U = ALS.readMatrixByRows(pathToU, conf);
-      M = ALS.readMatrixByRows(pathToM, conf);
+      U = ALS.readMatrixByRowsGlob(pathToU, conf);
+      M = ALS.readMatrixByRowsGlob(pathToM, conf);
 
       usesLongIDs = conf.getBoolean(ParallelALSFactorizationJob.USES_LONG_IDS, false);
     }

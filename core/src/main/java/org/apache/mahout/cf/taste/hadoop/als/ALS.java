@@ -99,6 +99,18 @@ final class ALS {
     return matrix;
   }
 
+  public static OpenIntObjectHashMap<Vector> readMatrixByRowsGlob(Path dir, Configuration conf) {
+	    OpenIntObjectHashMap<Vector> matrix = new OpenIntObjectHashMap<Vector>();
+	    for (Pair<IntWritable,VectorWritable> pair
+	        : new SequenceFileDirIterable<IntWritable,VectorWritable>(dir, PathType.GLOB, conf)) {
+	      int rowIndex = pair.getFirst().get();
+	      Vector row = pair.getSecond().get();
+	      matrix.put(rowIndex, row);
+	    }
+	    System.out.println("Path: " + dir.toString() + " Matrix Size:" + matrix.size());
+	    return matrix;
+  }
+
   public static Vector solveExplicit(VectorWritable ratingsWritable, OpenIntObjectHashMap<Vector> uOrM,
     double lambda, int numFeatures) {
     Vector ratings = ratingsWritable.get();
