@@ -200,22 +200,36 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		if (usesLongIDs) {
 			Job mapUsers = prepareJob(getInputPath(),
 					getOutputPath("userIDIndex"), TextInputFormat.class,
-					MapLongIDsMapper.class, VarIntWritable.class,
+					MapLongIDsMapper.class, IntPairWritable.class,
 					VarLongWritable.class, IDMapReducer.class,
 					VarIntWritable.class, VarLongWritable.class,
 					SequenceFileOutputFormat.class);
 			mapUsers.getConfiguration().set(TOKEN_POS,
 					String.valueOf(TasteHadoopUtils.USER_ID_POS));
+			
+			LazyOutputFormat.setOutputFormatClass(mapUsers, SequenceFileOutputFormat.class);
+			for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+				MultipleOutputs.addNamedOutput(mapUsers, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+						VarIntWritable.class, VarLongWritable.class);
+			}
+			
 			mapUsers.waitForCompletion(true);
 
 			Job mapItems = prepareJob(getInputPath(),
 					getOutputPath("itemIDIndex"), TextInputFormat.class,
-					MapLongIDsMapper.class, VarIntWritable.class,
+					MapLongIDsMapper.class, IntPairWritable.class,
 					VarLongWritable.class, IDMapReducer.class,
 					VarIntWritable.class, VarLongWritable.class,
 					SequenceFileOutputFormat.class);
 			mapItems.getConfiguration().set(TOKEN_POS,
 					String.valueOf(TasteHadoopUtils.ITEM_ID_POS));
+
+			LazyOutputFormat.setOutputFormatClass(mapItems, SequenceFileOutputFormat.class);
+			for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+				MultipleOutputs.addNamedOutput(mapItems, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+						VarIntWritable.class, VarLongWritable.class);
+			}			
+			
 			mapItems.waitForCompletion(true);
 		}
 		//input content: uID,mID,rating E.g. 21349098,444875844,2 21349098,1436281125,1 21349098,1856996949,1
@@ -699,17 +713,20 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	}
 
 	static class MapLongIDsMapper extends
-			Mapper<LongWritable, Text, VarIntWritable, VarLongWritable> {
+			Mapper<LongWritable, Text, IntPairWritable, VarLongWritable> {
 
-		private int tokenPos;
-		private final VarIntWritable index = new VarIntWritable();
+		private int tokenPos, numUserBlocks;
+		private final IntPairWritable index = new IntPairWritable();
 		private final VarLongWritable idWritable = new VarLongWritable();
 
 		@Override
 		protected void setup(Context ctx) throws IOException,
 				InterruptedException {
 			tokenPos = ctx.getConfiguration().getInt(TOKEN_POS, -1);
+			numUserBlocks = ctx.getConfiguration().getInt(NUM_BLOCKS, 10);
+			
 			Preconditions.checkState(tokenPos >= 0);
+			
 		}
 
 		@Override
@@ -718,8 +735,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			String[] tokens = TasteHadoopUtils.splitPrefTokens(line.toString());
 
 			long id = Long.parseLong(tokens[tokenPos]);
-
-			index.set(TasteHadoopUtils.idToIndex(id));
+			
+			int shortId = TasteHadoopUtils.idToIndex(id);
+			index.setFirst(shortId);
+			index.setSecond(BlockPartitionUtil.getBlockID(shortId, numUserBlocks));
 			idWritable.set(id);
 			ctx.write(index, idWritable);
 		}
@@ -727,12 +746,28 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 	static class IDMapReducer
 			extends
-			Reducer<VarIntWritable, VarLongWritable, VarIntWritable, VarLongWritable> {
+			Reducer<IntPairWritable, VarLongWritable, VarIntWritable, VarLongWritable> {
+		
+		private MultipleOutputs<VarIntWritable,VarLongWritable> out;
+		
 		@Override
-		protected void reduce(VarIntWritable index,
+		protected void cleanup(Context context) throws IOException,
+				InterruptedException {
+			out.close();
+		}
+
+		@Override
+		protected void setup(Context context) throws IOException,
+				InterruptedException {
+			out = new MultipleOutputs<VarIntWritable,VarLongWritable>(context);
+		}
+
+		@Override
+		protected void reduce(IntPairWritable index,
 				Iterable<VarLongWritable> ids, Context ctx) throws IOException,
 				InterruptedException {
-			ctx.write(index, ids.iterator().next());
+			//ctx.write(index, ids.iterator().next());			
+			out.write(Integer.toString(index.getSecond()), new VarIntWritable(index.getFirst()), ids.iterator().next());
 		}
 	}
 
