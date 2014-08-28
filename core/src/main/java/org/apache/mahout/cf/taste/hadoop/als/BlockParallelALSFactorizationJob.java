@@ -617,7 +617,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			solverConf.set(LAMBDA, String.valueOf(lambda));
 			solverConf.set(ALPHA, String.valueOf(alpha));
 			solverConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
-			solverConf.set(NUM_ENTITIES, String.valueOf(numEntities));
+			solverConf.set(NUM_ENTITIES, String.valueOf(0));
 
 			FileSystem fs = FileSystem.get(blockFixUorM.toUri(), solverConf);
 			
