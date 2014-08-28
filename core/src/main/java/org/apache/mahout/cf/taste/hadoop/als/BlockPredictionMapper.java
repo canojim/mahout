@@ -17,12 +17,9 @@
 
 package org.apache.mahout.cf.taste.hadoop.als;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.StringWriter;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -38,10 +35,10 @@ import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.apache.mahout.cf.taste.hadoop.MutableRecommendedItem;
 import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
+import org.apache.mahout.cf.taste.hadoop.TasteHadoopUtils;
 import org.apache.mahout.cf.taste.hadoop.TopItemsQueue;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.common.Pair;
-import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.iterator.sequencefile.PathType;
 import org.apache.mahout.common.iterator.sequencefile.SequenceFileDirIterable;
 import org.apache.mahout.math.VarIntWritable;
@@ -49,6 +46,7 @@ import org.apache.mahout.math.VarLongWritable;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
 import org.apache.mahout.math.function.IntObjectProcedure;
+import org.apache.mahout.math.map.OpenIntLongHashMap;
 import org.apache.mahout.math.map.OpenIntObjectHashMap;
 import org.apache.mahout.math.set.OpenIntHashSet;
 
@@ -65,14 +63,16 @@ public class BlockPredictionMapper
 	private float maxRating;
 
 	private boolean usesLongIDs;
-	// private OpenIntLongHashMap userIDIndex;
+	private OpenIntLongHashMap userIDIndex;
 	// private OpenIntLongHashMap itemIDIndex;
 
 	private final LongWritable userIDWritable = new LongWritable();
 	private final RecommendedItemsWritable recommendations = new RecommendedItemsWritable();
 
-	private Path userIndexPath;
-	private Path itemIndexPath;
+	// private Path userIndexPath;
+	//private Path itemIndexPath;
+	String itemIndexPathStr;
+	int numItemBlocks;
 	private Path pathToBlockU;
 	private Path pathToM;
 	private Path rcmFilterPath;
@@ -83,7 +83,7 @@ public class BlockPredictionMapper
 	OpenIntObjectHashMap<Vector> createSharedInstance(Context ctx) {
 
 		Configuration conf = ctx.getConfiguration();
-		 
+
 		return ALS.readMatrixByRows(pathToBlockU, conf);
 	}
 
@@ -108,17 +108,17 @@ public class BlockPredictionMapper
 		}
 
 		if (usesLongIDs) {
-			// userIDIndex =
-			// TasteHadoopUtils.readIDIndexMap(conf.get(RecommenderJob.USER_INDEX_PATH),
-			// conf);
+			userIDIndex = TasteHadoopUtils.readIDIndexMap(
+					conf.get(RecommenderJob.USER_INDEX_PATH), conf);
 			// itemIDIndex =
 			// TasteHadoopUtils.readIDIndexMap(conf.get(RecommenderJob.ITEM_INDEX_PATH),
 			// conf);
 
-			userIndexPath = new Path(conf.get(RecommenderJob.USER_INDEX_PATH));
-			itemIndexPath = new Path(conf.get(RecommenderJob.ITEM_INDEX_PATH));
-
+			itemIndexPathStr = conf.get(RecommenderJob.ITEM_INDEX_PATH);
 		}
+		
+		numItemBlocks = conf.getInt(BlockRecommenderJob.NUM_ITEM_BLOCK, 10);
+
 	}
 
 	@Override
@@ -127,41 +127,20 @@ public class BlockPredictionMapper
 			InterruptedException {
 
 		Configuration conf = ctx.getConfiguration();
-		// Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>>
-		// uAndM = getSharedInstance();
-		// OpenIntObjectHashMap<Vector> U = uAndM.getFirst();
-		// OpenIntObjectHashMap<Vector> M = uAndM.getSecond();
+		OpenIntObjectHashMap<Vector> U = getSharedInstance();
 
 		int userIndex = userIndexWritable.get();
 		long userIndexLongID = -1;
 
 		if (usesLongIDs) {
 
-			int count = 0;
-			try {
-				for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
-						userIndexPath, PathType.LIST, PathFilters.partFilter(),
-						null, false, conf)) {
+			userIndexLongID = userIDIndex.get(userIndex);
 
-					if (userIndex == record.getFirst().get()) {
-						userIndexLongID = record.getSecond().get();
-
-						if (rcmFilterSet != null
-								&& !rcmFilterSet.contains(userIndexLongID)) {
-							return; // Generate recommendation for selected few
-									// id only.
-						}
-					}
-
-					count++;
-				} // for
-			} catch (RuntimeException e) {
-				System.out.println("usesLongIDs userIndex: " + userIndex);
-				System.out.println("count: " + count);
-
-				e.printStackTrace();
-				throw e;
+			if (rcmFilterSet != null && !rcmFilterSet.contains(userIndexLongID)) {
+				return; // Generate recommendation for selected few
+						// id only.
 			}
+
 		} else {
 			if (rcmFilterSet != null
 					&& !rcmFilterSet.contains(new Long(userIndex)))
@@ -179,13 +158,13 @@ public class BlockPredictionMapper
 
 		final TopItemsQueue topItemsQueue = new TopItemsQueue(
 				recommendationsPerUser);
-		final Vector userFeatures = getUserFeatures(conf, userIndex);
+		final Vector userFeature = U.get(userIndex);
 
 		forEachItemPair(conf, new IntObjectProcedure<Vector>() {
 			@Override
 			public boolean apply(int itemID, Vector itemFeatures) {
 				if (!alreadyRatedItems.contains(itemID)) {
-					double predictedRating = userFeatures.dot(itemFeatures);
+					double predictedRating = userFeature.dot(itemFeatures);
 
 					MutableRecommendedItem top = topItemsQueue.top();
 					if (predictedRating > top.getValue()) {
@@ -196,7 +175,10 @@ public class BlockPredictionMapper
 				return true;
 			}
 		});
-
+		
+		
+		int [] blockToLoad = new int[numItemBlocks];
+				
 		List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
 
 		if (!recommendedItems.isEmpty()) {
@@ -208,30 +190,37 @@ public class BlockPredictionMapper
 				((MutableRecommendedItem) topItem).capToMaxValue(maxRating);
 
 				recommendedMap.put(topItem.getItemID(), topItem);
+				int blockId = BlockPartitionUtil.getBlockID((int) topItem.getItemID(), numItemBlocks);
+				blockToLoad[blockId] += 1;
 			}
 
 			if (usesLongIDs) {
 
 				userIDWritable.set(userIndexLongID);
+				
+				for (int i=0; i < blockToLoad.length; i++) {
+					if (blockToLoad[i] > 0) {
+						long count = 0;
+						Path itemIndexPath = new Path(itemIndexPathStr + "/" + i + "-r-*");
+						for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
+								itemIndexPath, PathType.GLOB, null, null, false, conf)) {
+							RecommendedItem item = recommendedMap.get(new Long(record
+									.getFirst().get()));
 
-				// Refactor long userID = userIDIndex.get(userIndex);
-				long count = 0;
-				for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
-						itemIndexPath, PathType.LIST, PathFilters.partFilter(),
-						null, false, conf)) {
+							if (item != null) {
+								count++;
+								((MutableRecommendedItem) item).setItemID(record
+										.getSecond().get());
+							}
 
-					RecommendedItem item = recommendedMap.get(new Long(record
-							.getFirst().get()));
-
-					if (item != null) {
-						count++;
-						((MutableRecommendedItem) item).setItemID(record
-								.getSecond().get());
+							if (blockToLoad[i] == count)
+								break;
+						} //for
 					}
-
-					if (recommendedMap.size() == count)
-						break;
 				}
+				
+				
+
 
 				/*
 				 * long userID = userIDIndex.get(userIndex);
@@ -251,26 +240,12 @@ public class BlockPredictionMapper
 		}
 	}
 
-	// Refactor final Vector userFeatures = U.get(userIndex);
-	// U
-	private Vector getUserFeatures(Configuration conf, int userIndex) {
-		for (Pair<IntWritable, VectorWritable> pair : new SequenceFileDirIterable<IntWritable, VectorWritable>(
-				pathToU, PathType.LIST, PathFilters.partFilter(), conf)) {
-			int rowIndex = pair.getFirst().get();
-			if (rowIndex == userIndex) {
-				Vector row = pair.getSecond().get();
-				return row;
-			}
-		}
-		return null;
-	}
-
 	// Refactor M.forEachItemPair
 	// M
 	private boolean forEachItemPair(Configuration conf,
 			IntObjectProcedure<Vector> procedure) {
 		for (Pair<IntWritable, VectorWritable> pair : new SequenceFileDirIterable<IntWritable, VectorWritable>(
-				pathToM, PathType.LIST, PathFilters.partFilter(), conf)) {
+				pathToM, PathType.GLOB, null, conf)) {
 			int rowIndex = pair.getFirst().get();
 			Vector row = pair.getSecond().get();
 
@@ -284,42 +259,24 @@ public class BlockPredictionMapper
 
 	// load recommendation filter list
 	private HashSet<Long> loadFilterList(Configuration conf) throws IOException {
-
 		return loadFilterList(rcmFilterPath, conf);
-		
-/*		HashSet<Long> s = new HashSet<Long>();
-		FileSystem fs = FileSystem.get(conf);
-
-		BufferedReader br = new BufferedReader(new InputStreamReader(
-				fs.open(rcmFilterPath)));
-
-		String line;
-		line = br.readLine();
-
-		while (line != null && !"".equals(line)) {
-			s.add(new Long(line));
-			line = br.readLine();
-		}
-
-		return s;
-*/
 	}
 
 	// load recommendation filter list
 	private HashSet<Long> loadFilterList(Path location, Configuration conf)
 			throws IOException {
-		
+
 		HashSet<Long> s = new HashSet<Long>();
-		
+
 		FileSystem fileSystem = FileSystem.get(location.toUri(), conf);
 		CompressionCodecFactory factory = new CompressionCodecFactory(conf);
 		FileStatus[] items = fileSystem.listStatus(location);
-		
+
 		if (items == null) {
 			System.out.println("items is null.");
 			return s;
 		}
-		
+
 		for (FileStatus item : items) {
 
 			System.out.println("file name: " + item.getPath().getName());
@@ -347,7 +304,7 @@ public class BlockPredictionMapper
 				s.add(new Long(str));
 			}
 		}
-		
+
 		System.out.println("s.size: " + s.size());
 		return s;
 	}

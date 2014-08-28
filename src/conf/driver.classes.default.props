@@ -66,6 +66,7 @@ org.apache.mahout.cf.taste.hadoop.als.ParallelALSFactorizationJob = parallelALS 
 org.apache.mahout.cf.taste.hadoop.als.BlockParallelALSFactorizationJob = blockParallelALS : Block ALS-WR factorization of a rating matrix
 
 org.apache.mahout.cf.taste.hadoop.als.RecommenderJob = recommendfactorized : Compute recommendations using the factorization of a rating matrix
+org.apache.mahout.cf.taste.hadoop.als.BlockRecommenderJob = recommendblockfactorized : Compute recommendations using the block factorization of a rating matrix
 prepare20newsgroups = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
 trainclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
 testclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
