@@ -92,7 +92,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	static final int DEFAULT_NUM_RECOMMENDATIONS = 10;
 
 	public static void main(String[] args) throws Exception {
-		ToolRunner.run(new RecommenderJob(), args);
+		ToolRunner.run(new BlockRecommenderJob(), args);
 	}
 
 	@Override
@@ -165,7 +165,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					+ Integer.toString(blockId) + "-r-*");
 			Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
 					+ Integer.toString(blockId) + "-r-*");
-			Path blockOutputPath = new Path(getOutputPath().toString() + "/"
+			Path blockOutputPath = new Path(getOutputPath().toString() + "/result/"
 					+ Integer.toString(blockId));
 
 			Job blockPrediction = prepareJob(blockUserRatingsPath,
@@ -181,7 +181,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			blockPredictionConf.set(USER_FEATURES_PATH,
 					blockUserFeaturesPath.toString());
 			blockPredictionConf.set(ITEM_FEATURES_PATH,
-					getOption("itemFeatures"));
+					getOption("itemFeatures") + "/*-r-*");
 			blockPredictionConf.set(MAX_RATING, getOption("maxRating"));
 			blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
 			blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
@@ -220,6 +220,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		List<ControlledJob> failedJob = control.getFailedJobList();
 
 		if (failedJob != null && failedJob.size() > 0) {
+			control.stop();
 			throw new IllegalStateException("control job failed: " + failedJob);
 		} else {
 			log.info("control job finished");

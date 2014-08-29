@@ -652,6 +652,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		List<ControlledJob> failedJob = control.getFailedJobList();
 		
 		if (failedJob != null && failedJob.size() > 0) {
+			control.stop();
 			throw new IllegalStateException("control job failed: " + failedJob);
 		} else {
 			log.info("control job finished");

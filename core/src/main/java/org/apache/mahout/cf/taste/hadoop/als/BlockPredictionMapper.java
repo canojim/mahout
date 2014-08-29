@@ -50,6 +50,8 @@ import org.apache.mahout.math.map.OpenIntLongHashMap;
 import org.apache.mahout.math.map.OpenIntObjectHashMap;
 import org.apache.mahout.math.set.OpenIntHashSet;
 
+import com.google.common.base.Preconditions;
+
 /**
  * a multithreaded mapper that loads the feature matrices U and M into memory.
  * Afterwards it computes recommendations from these. Can be executed by a
@@ -73,7 +75,7 @@ public class BlockPredictionMapper
 	//private Path itemIndexPath;
 	String itemIndexPathStr;
 	int numItemBlocks;
-	private Path pathToBlockU;
+	//private Path pathToBlockU;
 	private Path pathToM;
 	private Path rcmFilterPath;
 
@@ -84,37 +86,41 @@ public class BlockPredictionMapper
 
 		Configuration conf = ctx.getConfiguration();
 
-		return ALS.readMatrixByRows(pathToBlockU, conf);
+		String p = conf.get(BlockRecommenderJob.USER_FEATURES_PATH);
+		OpenIntObjectHashMap<Vector> u = ALS.readMatrixByRowsGlob(new Path(p), conf); 
+		System.out.println("p: " + p + " U.size: " + u.size());
+		
+		return u;
 	}
 
 	@Override
 	protected void setup(Context ctx) throws IOException, InterruptedException {
 		Configuration conf = ctx.getConfiguration();
 		recommendationsPerUser = conf.getInt(
-				RecommenderJob.NUM_RECOMMENDATIONS,
-				RecommenderJob.DEFAULT_NUM_RECOMMENDATIONS);
-		maxRating = Float.parseFloat(conf.get(RecommenderJob.MAX_RATING));
+				BlockRecommenderJob.NUM_RECOMMENDATIONS,
+				BlockRecommenderJob.DEFAULT_NUM_RECOMMENDATIONS);
+		maxRating = Float.parseFloat(conf.get(BlockRecommenderJob.MAX_RATING));
 
 		usesLongIDs = conf.getBoolean(
 				ParallelALSFactorizationJob.USES_LONG_IDS, false);
 
-		pathToBlockU = new Path(conf.get(RecommenderJob.USER_FEATURES_PATH));
-		pathToM = new Path(conf.get(RecommenderJob.ITEM_FEATURES_PATH));
+		//pathToBlockU = new Path(conf.get(BlockRecommenderJob.USER_FEATURES_PATH));
+		pathToM = new Path(conf.get(BlockRecommenderJob.ITEM_FEATURES_PATH));
 
-		String p = conf.get(RecommenderJob.RECOMMEND_FILTER_PATH);
+		String p = conf.get(BlockRecommenderJob.RECOMMEND_FILTER_PATH);
 		if (p != null) {
 			rcmFilterPath = new Path(p);
 			rcmFilterSet = loadFilterList(conf);
 		}
 
 		if (usesLongIDs) {
-			userIDIndex = TasteHadoopUtils.readIDIndexMap(
-					conf.get(RecommenderJob.USER_INDEX_PATH), conf);
+			userIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
+					conf.get(BlockRecommenderJob.USER_INDEX_PATH), conf);
 			// itemIDIndex =
 			// TasteHadoopUtils.readIDIndexMap(conf.get(RecommenderJob.ITEM_INDEX_PATH),
 			// conf);
 
-			itemIndexPathStr = conf.get(RecommenderJob.ITEM_INDEX_PATH);
+			itemIndexPathStr = conf.get(BlockRecommenderJob.ITEM_INDEX_PATH);
 		}
 		
 		numItemBlocks = conf.getInt(BlockRecommenderJob.NUM_ITEM_BLOCK, 10);
@@ -128,14 +134,17 @@ public class BlockPredictionMapper
 
 		Configuration conf = ctx.getConfiguration();
 		OpenIntObjectHashMap<Vector> U = getSharedInstance();
-
+		
 		int userIndex = userIndexWritable.get();
 		long userIndexLongID = -1;
 
 		if (usesLongIDs) {
 
 			userIndexLongID = userIDIndex.get(userIndex);
-
+			
+			//System.out.println("before filter userIndex: " + userIndex + " longID: " + userIndexLongID);
+			Preconditions.checkState(userIndexLongID > 0);
+			
 			if (rcmFilterSet != null && !rcmFilterSet.contains(userIndexLongID)) {
 				return; // Generate recommendation for selected few
 						// id only.
@@ -146,7 +155,9 @@ public class BlockPredictionMapper
 					&& !rcmFilterSet.contains(new Long(userIndex)))
 				return;
 		}
-
+		
+		System.out.println("after filter userIndex: " + userIndex + " longID: " + userIndexLongID);
+		
 		Vector ratings = ratingsWritable.get();
 
 		final OpenIntHashSet alreadyRatedItems = new OpenIntHashSet(
@@ -219,9 +230,6 @@ public class BlockPredictionMapper
 					}
 				}
 				
-				
-
-
 				/*
 				 * long userID = userIDIndex.get(userIndex);
 				 * userIDWritable.set(userID);
@@ -237,6 +245,8 @@ public class BlockPredictionMapper
 
 			recommendations.set(recommendedItems);
 			ctx.write(userIDWritable, recommendations);
+		} else {
+			System.out.println("recommendedItems is empty");
 		}
 	}
 
@@ -273,13 +283,13 @@ public class BlockPredictionMapper
 		FileStatus[] items = fileSystem.listStatus(location);
 
 		if (items == null) {
-			System.out.println("items is null.");
+			System.out.println("No filter found.");
 			return s;
 		}
 
 		for (FileStatus item : items) {
 
-			System.out.println("file name: " + item.getPath().getName());
+			System.out.println("loadFilterList file name: " + item.getPath().getName());
 			// ignoring files like _SUCCESS
 			if (item.getPath().getName().startsWith("_")) {
 				continue;
@@ -305,7 +315,7 @@ public class BlockPredictionMapper
 			}
 		}
 
-		System.out.println("s.size: " + s.size());
+		System.out.println("filter size: " + s.size());
 		return s;
 	}
 

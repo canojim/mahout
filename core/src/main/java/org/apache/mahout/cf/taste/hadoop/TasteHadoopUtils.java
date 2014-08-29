@@ -31,63 +31,74 @@ import org.apache.mahout.math.map.OpenIntLongHashMap;
 import java.util.regex.Pattern;
 
 /**
- * Some helper methods for the hadoop-related stuff in org.apache.mahout.cf.taste
+ * Some helper methods for the hadoop-related stuff in
+ * org.apache.mahout.cf.taste
  */
 public final class TasteHadoopUtils {
 
-  public static final int USER_ID_POS = 0;
-  public static final int ITEM_ID_POS = 1;
+	public static final int USER_ID_POS = 0;
+	public static final int ITEM_ID_POS = 1;
 
-  /** Standard delimiter of textual preference data */
-  private static final Pattern PREFERENCE_TOKEN_DELIMITER = Pattern.compile("[\t,]");
+	/** Standard delimiter of textual preference data */
+	private static final Pattern PREFERENCE_TOKEN_DELIMITER = Pattern
+			.compile("[\t,]");
 
-  private TasteHadoopUtils() {}
+	private TasteHadoopUtils() {
+	}
 
-  /**
-   * Splits a preference data line into string tokens
-   */
-  public static String[] splitPrefTokens(CharSequence line) {
-    return PREFERENCE_TOKEN_DELIMITER.split(line);
-  }
+	/**
+	 * Splits a preference data line into string tokens
+	 */
+	public static String[] splitPrefTokens(CharSequence line) {
+		return PREFERENCE_TOKEN_DELIMITER.split(line);
+	}
 
-  /**
-   * Maps a long to an int with range of 0 to Integer.MAX_VALUE-1
-   */
-  public static int idToIndex(long id) {
-    return 0x7FFFFFFF & Longs.hashCode(id) % 0x7FFFFFFE;
-  }
+	/**
+	 * Maps a long to an int with range of 0 to Integer.MAX_VALUE-1
+	 */
+	public static int idToIndex(long id) {
+		return 0x7FFFFFFF & Longs.hashCode(id) % 0x7FFFFFFE;
+	}
 
-  public static int readID(String token, boolean usesLongIDs) {
-    return usesLongIDs ? idToIndex(Long.parseLong(token)) : Integer.parseInt(token);
-  }
+	public static int readID(String token, boolean usesLongIDs) {
+		return usesLongIDs ? idToIndex(Long.parseLong(token)) : Integer
+				.parseInt(token);
+	}
 
-  /**
-   * Reads a binary mapping file
-   */
-  public static OpenIntLongHashMap readIDIndexMap(String idIndexPathStr, Configuration conf) {
-    OpenIntLongHashMap indexIDMap = new OpenIntLongHashMap();
-    Path itemIDIndexPath = new Path(idIndexPathStr);
-    for (Pair<VarIntWritable,VarLongWritable> record
-         : new SequenceFileDirIterable<VarIntWritable,VarLongWritable>(itemIDIndexPath,
-                                                                       PathType.LIST,
-                                                                       PathFilters.partFilter(),
-                                                                       null,
-                                                                       true,
-                                                                       conf)) {
-      indexIDMap.put(record.getFirst().get(), record.getSecond().get());
-    }
-    return indexIDMap;
-  }
+	/**
+	 * Reads a binary mapping file
+	 */
+	public static OpenIntLongHashMap readIDIndexMap(String idIndexPathStr,
+			Configuration conf) {
+		OpenIntLongHashMap indexIDMap = new OpenIntLongHashMap();
+		Path itemIDIndexPath = new Path(idIndexPathStr);
+		for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
+				itemIDIndexPath, PathType.LIST, PathFilters.partFilter(), null,
+				true, conf)) {
+			indexIDMap.put(record.getFirst().get(), record.getSecond().get());
+		}
+		return indexIDMap;
+	}
 
+	public static OpenIntLongHashMap readIDIndexMapGlob(String idIndexPathStr,
+			Configuration conf) {
+		OpenIntLongHashMap indexIDMap = new OpenIntLongHashMap();
+		Path itemIDIndexPath = new Path(idIndexPathStr);
+		for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
+				itemIDIndexPath, PathType.GLOB, null, null,
+				true, conf)) {
+			indexIDMap.put(record.getFirst().get(), record.getSecond().get());
+		}
+		return indexIDMap;
+	}
 
-  /**
-   * Fast multiplicative hash with a nice distribution for 32-bit integer.
-   */
-  public static int byteswap32(int value) {
-    int hc = value * 0x9e3775cd;
-    hc = Integer.reverseBytes(hc);
-    return  hc * 0x9e3775cd;
-  }
-
+	/**
+	 * Fast multiplicative hash with a nice distribution for 32-bit integer.
+	 */
+	public static int byteswap32(int value) {
+		int hc = value * 0x9e3775cd;
+		hc = Integer.reverseBytes(hc);
+		return hc * 0x9e3775cd;
+	}
 
 }
