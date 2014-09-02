@@ -79,7 +79,7 @@ public class BlockPredictionMapper
 	private Path pathToM;
 	private Path rcmFilterPath;
 
-	private HashSet<Long> rcmFilterSet;
+	private HashSet<Long> rcmFilterSet = null;
 
 	@Override
 	OpenIntObjectHashMap<Vector> createSharedInstance(Context ctx) {
@@ -111,6 +111,7 @@ public class BlockPredictionMapper
 		if (p != null) {
 			rcmFilterPath = new Path(p);
 			rcmFilterSet = loadFilterList(conf);
+			Preconditions.checkState(rcmFilterSet.size() > 0, "Empty filter list. Check " + BlockRecommenderJob.RECOMMEND_FILTER_PATH);
 		}
 
 		if (usesLongIDs) {
@@ -311,11 +312,12 @@ public class BlockPredictionMapper
 			String raw = writer.toString();
 
 			for (String str : raw.split("\n")) {
-				s.add(new Long(str));
+				s.add(new Long(str.trim()));
 			}
 		}
 
 		System.out.println("filter size: " + s.size());
+		
 		return s;
 	}
 

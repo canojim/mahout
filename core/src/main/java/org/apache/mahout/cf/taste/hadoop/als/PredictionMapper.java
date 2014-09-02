@@ -17,12 +17,9 @@
 
 package org.apache.mahout.cf.taste.hadoop.als;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.StringWriter;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -352,7 +349,7 @@ public class PredictionMapper
 			String raw = writer.toString();
 
 			for (String str : raw.split("\n")) {
-				s.add(new Long(str));
+				s.add(new Long(str.trim()));
 			}
 		}
 		
