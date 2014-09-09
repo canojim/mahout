@@ -210,8 +210,12 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 						VarIntWritable.class, VarLongWritable.class);
 			}
 			
-			mapUsers.waitForCompletion(true);
-
+			log.info("Starting Map LongID for user job");
+			succeeded = mapUsers.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("MapLoingID-User job failed!");
+			}
+			
 			Job mapItems = prepareJob(getInputPath(),
 					getOutputPath("itemIDIndex"), TextInputFormat.class,
 					MapLongIDsMapper.class, IntPairWritable.class,
@@ -227,7 +231,13 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 						VarIntWritable.class, VarLongWritable.class);
 			}			
 			
-			mapItems.waitForCompletion(true);
+			log.info("Starting Map LongID for item job");
+			
+			succeeded = mapItems.waitForCompletion(true);
+			
+			if (!succeeded) {
+				throw new IllegalStateException("MapLoingID-Item job failed!");
+			}
 		}
 		//input content: uID,mID,rating E.g. 21349098,444875844,2 21349098,1436281125,1 21349098,1856996949,1
 		//output filename: als/tmp/itemRatings/blockID-r-nnnnn E.g. 0-r-00000 1-r-00000
@@ -253,9 +263,11 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				String.valueOf(usesLongIDs));
 		itemRatings.getConfiguration().setInt(NUM_BLOCKS,
 				numUserBlocks);
+
+		log.info("Starting item ratings job");
 		succeeded = itemRatings.waitForCompletion(true);
 		if (!succeeded) {
-			return -1;
+			throw new IllegalStateException("Item ratings job failed!");
 		}
 				
 		//output file: /als/out/userRatings/0-r-00000
@@ -278,30 +290,31 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		userRatings.getConfiguration().set(NUM_BLOCKS,
 				String.valueOf(numItemBlocks));
 
+		log.info("Starting user ratings job");
 		succeeded = userRatings.waitForCompletion(true);
 		if (!succeeded) {
-			return -1;
+			throw new IllegalStateException("User ratings job failed!");
 		}
 		
 		//als/tmp/averageRatings/part-r-00000
 		
-		// TODO this could be fiddled into one of the upper jobs
 		Job averageItemRatings = prepareJob(pathToItemRatings(),
 				getTempPath("averageRatings"), AverageRatingMapper.class,
 				IntWritable.class, DoubleIntPairWritable.class,
 				AverageRatingReducer.class, IntWritable.class,
 				DoubleWritable.class);
 		averageItemRatings.setCombinerClass(AverageRatingCombiner.class);
+		
+		log.info("Starting average rating job");
 		succeeded = averageItemRatings.waitForCompletion(true);
 		if (!succeeded) {
-			return -1;
+			throw new IllegalStateException("Average rating job failed!");
 		}
 
 
 		numItems = 0;
 		numUsers = 0;
 				
-		// TODO this could be fiddled into one of the upper jobs
 		Job initializeMByBlock = prepareJob(getTempPath("averageRatings"),
 				pathToM(-1), SequenceFileInputFormat.class, InitializeMapper.class,
 				IntWritable.class, VectorWritable.class, SequenceFileOutputFormat.class);
@@ -317,9 +330,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
       																IntWritable.class, VectorWritable.class);
 		}
 	
+		log.info("Starting initialize M-1 job");
 		succeeded = initializeMByBlock.waitForCompletion(true);
 		if (!succeeded) {
-			return -1;
+			throw new IllegalStateException("initializeM-1 job failed!");
 		}
 
 		for (int currentIteration = 0; currentIteration < numIterations; currentIteration++) {
@@ -653,7 +667,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		succeeded = updateUorM.waitForCompletion(true);
 		if (!succeeded) {
-			throw new RuntimeException("updateUorM job failed!");
+			throw new IllegalStateException("updateUorM job failed!");
 		}
 
 	}
