@@ -18,7 +18,6 @@
 package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +32,6 @@ import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -53,7 +51,6 @@ import org.apache.mahout.cf.taste.impl.common.RunningAverage;
 import org.apache.mahout.common.AbstractJob;
 import org.apache.mahout.common.RandomUtils;
 import org.apache.mahout.common.mapreduce.MergeVectorsCombiner;
-import org.apache.mahout.common.mapreduce.MergeVectorsReducer;
 import org.apache.mahout.common.mapreduce.VectorSumCombiner;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.RandomAccessSparseVector;
@@ -68,7 +65,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
-import com.google.common.io.Closeables;
 
 /**
  * <p>
@@ -124,6 +120,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			.getName() + ".pathToYty";
 
 	static final String NUM_BLOCKS = "numberOfBlocks";
+	static final String NUM_FEATURES = "numberOfFeatures";
 
 	private boolean implicitFeedback;
 	private int numIterations;
@@ -291,26 +288,39 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		// TODO this could be fiddled into one of the upper jobs
 		Job averageItemRatings = prepareJob(pathToItemRatings(),
 				getTempPath("averageRatings"), AverageRatingMapper.class,
-				IntWritable.class, VectorWritable.class,
-				MergeVectorsReducer.class, IntWritable.class,
-				VectorWritable.class);
-		averageItemRatings.setCombinerClass(MergeVectorsCombiner.class);
+				IntWritable.class, DoubleIntPairWritable.class,
+				AverageRatingReducer.class, IntWritable.class,
+				DoubleWritable.class);
+		averageItemRatings.setCombinerClass(AverageRatingCombiner.class);
 		succeeded = averageItemRatings.waitForCompletion(true);
 		if (!succeeded) {
 			return -1;
 		}
 
-		Vector averageRatings = ALS.readFirstRow(getTempPath("averageRatings"),
-				getConf());
 
-		numItems = averageRatings.getNumNondefaultElements();
-		numUsers = (int) userRatings.getCounters().findCounter(Stats.NUM_USERS)
-				.getValue();
-
-		log.info("Found {} users and {} items", numUsers, numItems);
+		numItems = 0;
+		numUsers = 0;
+				
+		// TODO this could be fiddled into one of the upper jobs
+		Job initializeMByBlock = prepareJob(getTempPath("averageRatings"),
+				pathToM(-1), SequenceFileInputFormat.class, InitializeMapper.class,
+				IntWritable.class, VectorWritable.class, SequenceFileOutputFormat.class);
 		
-		/* create an initial M */
-		initializeBlockM(averageRatings, numItemBlocks);		
+		Configuration initializeMConf = initializeMByBlock.getConfiguration();
+		initializeMConf.setInt(NUM_BLOCKS, numItemBlocks);
+		initializeMConf.setInt(NUM_FEATURES, numFeatures);
+		
+		// use multiple output to support block
+		LazyOutputFormat.setOutputFormatClass(initializeMByBlock, SequenceFileOutputFormat.class);
+		for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+			MultipleOutputs.addNamedOutput(initializeMByBlock, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+      																IntWritable.class, VectorWritable.class);
+		}
+	
+		succeeded = initializeMByBlock.waitForCompletion(true);
+		if (!succeeded) {
+			return -1;
+		}
 
 		for (int currentIteration = 0; currentIteration < numIterations; currentIteration++) {
 			/* broadcast M, read A row-wise, recompute U row-wise */
@@ -331,86 +341,46 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		return 0;
 	}
-
-	private void initializeM(Vector averageRatings, String partName)
-			throws IOException {
-
-		final int TOTAL_PART_NUM = 10;
-
-		Random random = RandomUtils.getRandom();
-		int partSize = (int) Math.ceil(averageRatings.getNumNondefaultElements() / TOTAL_PART_NUM);
-
-		FileSystem fs = FileSystem.get(pathToM(-1).toUri(), getConf());
-		SequenceFile.Writer writer = null;
-		long count = 0;
-		long prevPartId = -1;
-		
-		try {	
-				IntWritable index = new IntWritable();
-				VectorWritable featureVector = new VectorWritable();
 	
-				for (Vector.Element e : averageRatings.nonZeroes()) {
-					
-					long partId = (count++)/partSize;
-					
-					if (partId != prevPartId) {
-						
-						if (prevPartId != -1) {
-							Closeables.close(writer, false);
-						}
-						
-						String partPath = partName + "-r-" + String.format("%05d", partId);
-						writer = new SequenceFile.Writer(fs, getConf(), new Path(
-								pathToM(-1), partPath), IntWritable.class,
-								VectorWritable.class);
-						prevPartId = partId;
-					}
-
-					Vector row = new DenseVector(numFeatures);
-					row.setQuick(0, e.get());
-					for (int m = 1; m < numFeatures; m++) {
-						row.setQuick(m, random.nextDouble());
-					}
-					index.set(e.index());
-					featureVector.set(row);
-					writer.append(index, featureVector);
-				}
-		} finally {
-			Closeables.close(writer, false);
-		}
-	}	
+	static class InitializeMapper extends
+		Mapper<IntWritable, DoubleWritable, IntWritable, VectorWritable> {
 		
-	/**
-	 * 
-	 * Change Log: Split to 100 parts.
-	 * @param averageRatings
-	 * @param numEntity
-	 * @throws IOException
-	 */
-	private void initializeBlockM(Vector averageRatings, int numItemBlocks)
-			throws IOException {
+		private MultipleOutputs<IntWritable, VectorWritable> out;
+		private VectorWritable featureVector = new VectorWritable();
+		private Random random = RandomUtils.getRandom();
+		private int numBlocks;
+		private int numFeatures;
 
-		HashMap<String, Vector> partMap = new HashMap<String, Vector>();		
-		for (Vector.Element e : averageRatings.nonZeroes()) {
-					
-			int partName = BlockPartitionUtil.getBlockID(e.index(), numItemBlocks);
-					
-			Vector blockRatings = partMap.get(Integer.toString(partName));
-			if (blockRatings == null) {
-				blockRatings = new RandomAccessSparseVector(averageRatings.getNumNondefaultElements(), 1);
-				partMap.put(Integer.toString(partName), blockRatings);
+		@Override
+		protected void setup(Context ctx) throws IOException,
+			InterruptedException {
+			numBlocks = ctx.getConfiguration().getInt(NUM_BLOCKS, 10);
+			numFeatures = ctx.getConfiguration().getInt(NUM_FEATURES, 20);
+			out = new MultipleOutputs<IntWritable, VectorWritable>(ctx);
+		}
+
+		@Override
+		protected void map(IntWritable key, DoubleWritable value, Context ctx)
+				throws IOException, InterruptedException {
+			
+			int blockId = BlockPartitionUtil.getBlockID(key.get(), numBlocks);
+			Vector row = new DenseVector(numFeatures);
+			row.setQuick(0, value.get());
+			for (int m = 1; m < numFeatures; m++) {
+				row.setQuick(m, random.nextDouble());
 			}
 			
-			blockRatings.setQuick(e.index(), e.get());
+			featureVector.set(row);
+			out.write(Integer.toString(blockId), key, featureVector);
 		}
-				
-		Iterator it = partMap.entrySet().iterator();
-		while (it.hasNext()) {
-			Map.Entry<String, Vector> pairs = (Map.Entry<String, Vector>)it.next();
-			initializeM(pairs.getValue(), pairs.getKey());
-			it.remove(); // avoids a ConcurrentModificationException
+		
+		@Override
+		protected void cleanup(Context context)
+				throws IOException, InterruptedException {
+			out.close();
 		}
-	}	
+	}
+	
 
 	static class VectorSumReducer extends
 		Reducer<IntPairWritable, VectorWritable, IntWritable, VectorWritable> { //WritableComparable<?>
@@ -607,7 +577,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			Path blockRatings = new Path(ratings.toString() + "/" + Integer.toString(blockId) + "-r-*");
 			
 			Path blockRatingsOutput = new Path(getTempPath(blockOutputName).toString() + "/" + Integer.toString(blockId));
-			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-r-*");
+			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-*-*");
 				
 			Job solveBlockUorI = prepareJob(blockRatings, blockRatingsOutput,
 						SequenceFileInputFormat.class,
@@ -689,12 +659,9 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	}
 
 	static class AverageRatingMapper extends
-			Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
+			Mapper<IntWritable, VectorWritable, IntWritable, DoubleIntPairWritable> {
 
-		private final IntWritable firstIndex = new IntWritable(0);
-		private final Vector featureVector = new RandomAccessSparseVector(
-				Integer.MAX_VALUE, 1);
-		private final VectorWritable featureVectorWritable = new VectorWritable();
+		private final DoubleIntPairWritable avgInfo = new DoubleIntPairWritable();
 
 		@Override
 		protected void map(IntWritable r, VectorWritable v, Context ctx)
@@ -704,14 +671,59 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 				avg.addDatum(e.get());
 			}
 
-			featureVector.setQuick(r.get(), avg.getAverage());
-			featureVectorWritable.set(featureVector);
-			ctx.write(firstIndex, featureVectorWritable);
-
-			// prepare instance for reuse
-			featureVector.setQuick(r.get(), 0.0d);
+			avgInfo.setFirst(avg.getAverage());
+			avgInfo.setSecond(avg.getCount());
+			ctx.write(r, avgInfo);
 		}
 	}
+	
+	static class AverageRatingCombiner extends
+		Reducer<IntWritable, DoubleIntPairWritable, IntWritable, DoubleIntPairWritable> {
+	
+		private DoubleIntPairWritable value = new DoubleIntPairWritable();
+
+		@Override
+		public void reduce(IntWritable key, Iterable<DoubleIntPairWritable> vectors, Context ctx)
+				throws IOException, InterruptedException {
+	  
+			double sum = 0.0;
+			int count = 0;
+			Iterator<DoubleIntPairWritable> iter = vectors.iterator();
+			while (iter.hasNext()) {
+				DoubleIntPairWritable avgInfo = iter.next();
+				sum += avgInfo.getFirst() * avgInfo.getSecond();
+				count += avgInfo.getSecond();
+			}
+	  
+			value.setFirst(sum/count);
+			value.setSecond(count);
+			ctx.write(key, value);
+		}
+	}	
+	
+	static class AverageRatingReducer extends
+		Reducer<IntWritable, DoubleIntPairWritable, IntWritable, DoubleWritable> {
+		
+		private DoubleWritable value = new DoubleWritable();
+
+		@Override
+		public void reduce(IntWritable key, Iterable<DoubleIntPairWritable> vectors, Context ctx)
+				throws IOException, InterruptedException {
+		  
+			double sum = 0.0;
+			int count = 0;
+			Iterator<DoubleIntPairWritable> iter = vectors.iterator();
+			while (iter.hasNext()) {
+				DoubleIntPairWritable avgInfo = iter.next();
+				sum += avgInfo.getFirst() * avgInfo.getSecond();
+				count += avgInfo.getSecond();
+			}
+		  
+			value.set(sum/count);
+			ctx.write(key, value);
+		}
+	}
+
 
 	static class MapLongIDsMapper extends
 			Mapper<LongWritable, Text, IntPairWritable, VarLongWritable> {
