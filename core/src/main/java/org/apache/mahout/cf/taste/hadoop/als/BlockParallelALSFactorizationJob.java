@@ -607,7 +607,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			
 			FileStatus[] parts = fs.globStatus(blockFixUorM);
 			
-			log.info("Pushing " + parts.length + " files to distributed cache.");
+			if (blockId == 0) {
+				log.info("Pushing " + parts.length + " files to distributed cache.");
+			}
+			
 			for (FileStatus part : parts) {
 				//System.out.println("Adding {} to distributed cache: " + part.getPath().toString());
 				if (log.isDebugEnabled()) {
