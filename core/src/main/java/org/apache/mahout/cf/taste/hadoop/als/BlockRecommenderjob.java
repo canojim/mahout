@@ -145,12 +145,12 @@ public class BlockRecommenderJob extends AbstractJob {
 					IntWritable.class, VectorWritable.class);
 		}
 
-		userRatings.setCombinerClass(MergeVectorsCombiner.class);
+		//userRatings.setCombinerClass(MergeVectorsCombiner.class);
 		userRatings.getConfiguration().setInt(NUM_USER_BLOCK, numUserBlock);
 
 		boolean succeeded = userRatings.waitForCompletion(true);
 		if (!succeeded) {
-			return -1;
+			throw new IllegalStateException("userRatings job failed");
 		}
 
 		String userFeaturesPath = getOption("userFeatures");
@@ -248,8 +248,10 @@ public class BlockRecommenderJob extends AbstractJob {
 		@Override
 		public void reduce(IntWritable key, Iterable<VectorWritable> values,
 				Context ctx) throws IOException, InterruptedException {
+						
 			Vector merged = VectorWritable.merge(values.iterator()).get();
-
+			//System.out.println("key: " + key + "merged vector: " + merged.size());
+			
 			resultValue.set(new SequentialAccessSparseVector(merged));
 			int blockId = BlockPartitionUtil.getBlockID(key.get(),
 					numUserBlocks);

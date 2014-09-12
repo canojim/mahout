@@ -60,6 +60,7 @@ org.apache.mahout.classifier.ConfusionMatrixDumper = cmdump : Dump confusion mat
 #Recommenders
 org.apache.mahout.cf.taste.hadoop.als.DatasetSplitter = splitDataset : split a rating dataset into training and probe parts
 org.apache.mahout.cf.taste.hadoop.als.FactorizationEvaluator = evaluateFactorization : compute RMSE and MAE of a rating matrix factorization against probes
+org.apache.mahout.cf.taste.hadoop.als.BlockFactorizationEvaluator = evaluateBlockFactorization : compute RMSE and MAE of a rating matrix factorization against probes
 org.apache.mahout.cf.taste.hadoop.similarity.item.ItemSimilarityJob = itemsimilarity : Compute the item-item-similarities for item-based collaborative filtering
 org.apache.mahout.cf.taste.hadoop.item.RecommenderJob = recommenditembased : Compute recommendations using item-based collaborative filtering
 org.apache.mahout.cf.taste.hadoop.als.ParallelALSFactorizationJob = parallelALS : ALS-WR factorization of a rating matrix
