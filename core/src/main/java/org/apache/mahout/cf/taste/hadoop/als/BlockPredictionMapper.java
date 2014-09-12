@@ -143,8 +143,7 @@ public class BlockPredictionMapper
 
 			userIndexLongID = userIDIndex.get(userIndex);
 			
-			//System.out.println("before filter userIndex: " + userIndex + " longID: " + userIndexLongID);
-			Preconditions.checkState(userIndexLongID > 0);
+			Preconditions.checkState(userIndexLongID > 0, "userIndexLongID must be greater than 0. userIndex: " + userIndex);
 			
 			if (rcmFilterSet != null && !rcmFilterSet.contains(userIndexLongID)) {
 				return; // Generate recommendation for selected few

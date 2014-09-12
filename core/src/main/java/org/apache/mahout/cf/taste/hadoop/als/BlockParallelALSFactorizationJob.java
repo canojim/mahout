@@ -203,9 +203,12 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 					SequenceFileOutputFormat.class);
 			mapUsers.getConfiguration().set(TOKEN_POS,
 					String.valueOf(TasteHadoopUtils.USER_ID_POS));
+			mapUsers.getConfiguration().setInt(NUM_BLOCKS,
+					numUserBlocks);
+			
 			
 			LazyOutputFormat.setOutputFormatClass(mapUsers, SequenceFileOutputFormat.class);
-			for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+			for (int blockId = 0; blockId < numUserBlocks; blockId++) {
 				MultipleOutputs.addNamedOutput(mapUsers, Integer.toString(blockId), SequenceFileOutputFormat.class, 
 						VarIntWritable.class, VarLongWritable.class);
 			}
@@ -224,6 +227,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 					SequenceFileOutputFormat.class);
 			mapItems.getConfiguration().set(TOKEN_POS,
 					String.valueOf(TasteHadoopUtils.ITEM_ID_POS));
+			mapItems.getConfiguration().setInt(NUM_BLOCKS,
+					numItemBlocks);
 
 			LazyOutputFormat.setOutputFormatClass(mapItems, SequenceFileOutputFormat.class);
 			for (int blockId = 0; blockId < numItemBlocks; blockId++) {

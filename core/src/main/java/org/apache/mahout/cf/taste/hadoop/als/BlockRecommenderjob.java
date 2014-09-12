@@ -148,6 +148,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		//userRatings.setCombinerClass(MergeVectorsCombiner.class);
 		userRatings.getConfiguration().setInt(NUM_USER_BLOCK, numUserBlock);
 
+		log.info("Starting userRatings job");
 		boolean succeeded = userRatings.waitForCompletion(true);
 		if (!succeeded) {
 			throw new IllegalStateException("userRatings job failed");
