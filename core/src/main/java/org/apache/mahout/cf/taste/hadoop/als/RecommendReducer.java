@@ -4,24 +4,15 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
 import org.apache.mahout.cf.taste.hadoop.MutableRecommendedItem;
 import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
 import org.apache.mahout.cf.taste.hadoop.TopItemsQueue;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
-import org.apache.mahout.math.DenseMatrix;
-import org.apache.mahout.math.Matrix;
-import org.apache.mahout.math.Vector;
-import org.apache.mahout.math.VectorWritable;
-import org.apache.mahout.math.als.AlternatingLeastSquaresSolver;
 
-import com.google.common.base.Preconditions;
-
-public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritable, 
+public class RecommendReducer extends Reducer<LongWritable, PairWritable, 
 		LongWritable, RecommendedItemsWritable> {
 
 	private TopItemsQueue topItemsQueue;
@@ -44,14 +35,14 @@ public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritab
 	
 	@Override
 	protected void reduce(LongWritable userIDWritable,
-			Iterable<DoubleLongPairWritable> values,
+			Iterable<PairWritable> values,
 			Context ctx) throws IOException, InterruptedException {
 
-		for (DoubleLongPairWritable i: values) {
-			double score = i.getFirst();
+		for (PairWritable<DoubleWritable, LongWritable> i: values) {
+			double score = i.getFirst().get();
 			MutableRecommendedItem top = topItemsQueue.top();
 			if (score > top.getValue()) {
-				top.set(i.getSecond(), (float) score);
+				top.set(i.getSecond().get(), (float) score);
 	            topItemsQueue.updateTop();
 	        }
 		}

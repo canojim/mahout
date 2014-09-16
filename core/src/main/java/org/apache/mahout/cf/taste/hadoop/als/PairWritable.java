@@ -6,13 +6,14 @@ import java.io.IOException;
 
 import org.apache.hadoop.io.WritableComparable;
 
-import com.google.common.collect.ComparisonChain;
-
-public class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<DoubleIntPairWritable> {
+public class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<PairWritable> {
 
 	private T1 first;
 	private T2 second;
-		
+	
+	public PairWritable() {
+	}
+	
 	public PairWritable(T1 value1, T2 value2) {
 		this.first = value1;
 		this.second = value2;
@@ -32,8 +33,13 @@ public class PairWritable<T1 extends WritableComparable, T2 extends WritableComp
 
 	@Override
 	public int compareTo(PairWritable o) {
-		return ComparisonChain.start().compare(first.get(), o.first.get())
-		        .compare(second.get(), o.second.get()).result();		
+		int firstResult = first.compareTo(o.first);
+		int secondResult = second.compareTo(o.second);
+		if (firstResult != 0)
+			return firstResult;
+		else {
+			return secondResult;
+		}
 	}
 
 	@Override
