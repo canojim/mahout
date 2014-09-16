@@ -38,7 +38,6 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
 import org.apache.mahout.common.AbstractJob;
-import org.apache.mahout.common.mapreduce.MergeVectorsCombiner;
 import org.apache.mahout.math.SequentialAccessSparseVector;
 import org.apache.mahout.math.Vector;
 import org.apache.mahout.math.VectorWritable;
@@ -129,134 +128,159 @@ public class BlockRecommenderJob extends AbstractJob {
 		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
 		
-		/* create block-wise user rating */
-		Job userRatings = prepareJob(getInputPath(),
-				pathToUserRatingsByUserBlock(), Mapper.class,
+		/* create block-wise user ratings */
+		Job userRatingsByUserBlock = prepareJob(getInputPath(),
+				pathToUserRatingsByUserBlock(), UserRatingsByUserBlockMapper.class,
 				IntWritable.class, VectorWritable.class,
-				MergeUserVectorsReducer.class, IntWritable.class,
+				Reducer.class, IntWritable.class,
 				VectorWritable.class);
 
 		// use multiple output to support block
-		LazyOutputFormat.setOutputFormatClass(userRatings,
+		LazyOutputFormat.setOutputFormatClass(userRatingsByUserBlock,
 				SequenceFileOutputFormat.class);
-		for (int blockId = 0; blockId < numUserBlock; blockId++) {
-			MultipleOutputs.addNamedOutput(userRatings,
-					Integer.toString(blockId), SequenceFileOutputFormat.class,
-					IntWritable.class, VectorWritable.class);
+		for (int userBlockId = 0; userBlockId < numUserBlock; userBlockId++) {
+			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+
+					String outputName = Integer.toString(userBlockId) + "-" + 
+							Integer.toString(itemBlockId);
+					MultipleOutputs.addNamedOutput(userRatings,
+							outputName, SequenceFileOutputFormat.class,
+							IntWritable.class, VectorWritable.class);
+			}
 		}
 
 		//userRatings.setCombinerClass(MergeVectorsCombiner.class);
-		userRatings.getConfiguration().setInt(NUM_USER_BLOCK, numUserBlock);
+		userRatingsByUserBlock.getConfiguration().setInt(NUM_USER_BLOCK, numUserBlock);
+		userRatingsByUserBlock.getConfiguration().setInt(NUM_ITEM_BLOCK, numItemBlock);
 
-		log.info("Starting userRatings job");
-		boolean succeeded = userRatings.waitForCompletion(true);
+		log.info("Starting userRatingsByUserBlock job");
+		boolean succeeded = userRatingsByUserBlock.waitForCompletion(true);
 		if (!succeeded) {
-			throw new IllegalStateException("userRatings job failed");
+			throw new IllegalStateException("userRatingsByUserBlock job failed");
 		}
 
 		String userFeaturesPath = getOption("userFeatures");
 
-		JobControl control = new JobControl("BlockRecommenderJob");
-
-		for (int blockId = 0; blockId < numUserBlock; blockId++) {
+		//for (int blockId = 0; blockId < numUserBlock; blockId++) {
+		int blockId = 23;
+		//TODO: Revert
+			JobControl control = new JobControl("BlockRecommenderJob");
 			// process each user block
-			Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
-					.toString() + "/" + Integer.toString(blockId) + "-r-*");
-			Path blockUserFeaturesPath = new Path(userFeaturesPath + "/"
-					+ Integer.toString(blockId) + "-r-*");
-			Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
-					+ Integer.toString(blockId) + "-r-*");
-			Path blockOutputPath = new Path(getOutputPath().toString() + "/result/"
-					+ Integer.toString(blockId));
+			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+				
+		
+				Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
+						.toString() + "/" + Integer.toString(blockId) + "/" + Integer.toString(itemBlockId) + "-r-*");
+				Path blockUserFeaturesPath = new Path(userFeaturesPath + "/"
+						+ Integer.toString(blockId) + "-r-*");
+				Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
+						+ Integer.toString(itemBlockId) + "-r-*");
+				Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
+						+ Integer.toString(blockId) + "-r-*");
+				Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
+						+ Integer.toString(itemBlockId) + "-r-*");
+				Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
+						+ Integer.toString(blockId));
 
-			Job blockPrediction = prepareJob(blockUserRatingsPath,
-					blockOutputPath, SequenceFileInputFormat.class,
-					MultithreadedSharingMapper.class, IntWritable.class,
-					RecommendedItemsWritable.class, TextOutputFormat.class);
+				Job blockPrediction = prepareJob(blockUserRatingsPath,
+						blockOutputPath, SequenceFileInputFormat.class,
+						MultithreadedSharingMapper.class, IntWritable.class,
+						RecommendedItemsWritable.class, SequenceFileOutputFormat.class);
+	
+				Configuration blockPredictionConf = blockPrediction
+						.getConfiguration();
+				int numThreads = Integer.parseInt(getOption("numThreads"));
+				blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
+						Integer.parseInt(getOption("numRecommendations")));
+				blockPredictionConf.set(USER_FEATURES_PATH,
+						blockUserFeaturesPath.toString());
+				blockPredictionConf.set(ITEM_FEATURES_PATH,
+						blockItemFeaturesPath.toString());
+				blockPredictionConf.set(MAX_RATING, getOption("maxRating"));
+				blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
+				blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
+				boolean usesLongIDs = Boolean
+						.parseBoolean(getOption("usesLongIDs"));
+				if (usesLongIDs) {
+					blockPredictionConf.set(
+							ParallelALSFactorizationJob.USES_LONG_IDS,
+							String.valueOf(true));
+					blockPredictionConf.set(USER_INDEX_PATH,
+							blockUserIDIndexPath.toString());
+					blockPredictionConf.set(ITEM_INDEX_PATH,
+							getOption("itemIDIndex"));
+				}
+	
+				String rcmPath = getOption("recommendFilterPath");
+				if (rcmPath != null)
+					blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
+	
+				MultithreadedMapper.setMapperClass(blockPrediction,
+						BlockPredictionMapper.class);
+				MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
+	
+				control.addJob(new ControlledJob(blockPredictionConf));
+			}
+			
+			Thread t = new Thread(control);
+			log.info("Starting " + numUserBlock + " block prediction jobs.");
+			t.start();
 
-			Configuration blockPredictionConf = blockPrediction
-					.getConfiguration();
-			int numThreads = Integer.parseInt(getOption("numThreads"));
-			blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
-					Integer.parseInt(getOption("numRecommendations")));
-			blockPredictionConf.set(USER_FEATURES_PATH,
-					blockUserFeaturesPath.toString());
-			blockPredictionConf.set(ITEM_FEATURES_PATH,
-					getOption("itemFeatures") + "/*-r-*");
-			blockPredictionConf.set(MAX_RATING, getOption("maxRating"));
-			blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
-			blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
-			boolean usesLongIDs = Boolean
-					.parseBoolean(getOption("usesLongIDs"));
-			if (usesLongIDs) {
-				blockPredictionConf.set(
-						ParallelALSFactorizationJob.USES_LONG_IDS,
-						String.valueOf(true));
-				blockPredictionConf.set(USER_INDEX_PATH,
-						blockUserIDIndexPath.toString());
-				blockPredictionConf.set(ITEM_INDEX_PATH,
-						getOption("itemIDIndex"));
+			while (!control.allFinished()) {
+				Thread.sleep(1000);
 			}
 
-			String rcmPath = getOption("recommendFilterPath");
-			if (rcmPath != null)
-				blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
+			List<ControlledJob> failedJob = control.getFailedJobList();
 
-			MultithreadedMapper.setMapperClass(blockPrediction,
-					BlockPredictionMapper.class);
-			MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
+			if (failedJob != null && failedJob.size() > 0) {
+				control.stop();
+				throw new IllegalStateException("control job failed: " + failedJob);
+			} else {
+				log.info("control job finished");
+			}
 
-			control.addJob(new ControlledJob(blockPredictionConf));
-
-		}
-
-		Thread t = new Thread(control);
-		log.info("Starting " + numUserBlock + " block prediction jobs.");
-		t.start();
-
-		while (!control.allFinished()) {
-			Thread.sleep(1000);
-		}
-
-		List<ControlledJob> failedJob = control.getFailedJobList();
-
-		if (failedJob != null && failedJob.size() > 0) {
 			control.stop();
-			throw new IllegalStateException("control job failed: " + failedJob);
-		} else {
-			log.info("control job finished");
-		}
+			
+			Path blocksOutputPath = new Path(getTempPath().toString() + "/result/");
+			Job blockRecommendation = prepareJob(blocksOutputPath,
+					getOutputPath(), SequenceFileInputFormat.class,
+					MultithreadedSharingMapper.class, IntWritable.class,
+					RecommendedItemsWritable.class, TextOutputFormat.class); 
 
-		control.stop();
+		//}
+
 
 		return 0;
 	}
 
-	static class MergeUserVectorsReducer extends
-			Reducer<IntWritable, VectorWritable, IntWritable, VectorWritable> {
+	static class UserRatingsByUserBlockMapper extends
+			Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
 
 		private MultipleOutputs<IntWritable, VectorWritable> out;
 		private int numUserBlocks;
-		private final VectorWritable resultValue = new VectorWritable();
+		private int numItemBlocks;
 
 		@Override
 		protected void setup(Context ctx) throws IOException,
 				InterruptedException {
 			out = new MultipleOutputs<IntWritable, VectorWritable>(ctx);
 			numUserBlocks = ctx.getConfiguration().getInt(NUM_USER_BLOCK, 10);
+			numItemBlocks = ctx.getConfiguration().getInt(NUM_ITEM_BLOCK, 10);
 		}
 
 		@Override
-		public void reduce(IntWritable key, Iterable<VectorWritable> values,
-				Context ctx) throws IOException, InterruptedException {
-						
-			Vector merged = VectorWritable.merge(values.iterator()).get();
-			//System.out.println("key: " + key + "merged vector: " + merged.size());
+		protected void map(IntWritable userIdWritable,
+				VectorWritable ratingsWritable, Context ctx) throws IOException,
+				InterruptedException {
 			
-			resultValue.set(new SequentialAccessSparseVector(merged));
-			int blockId = BlockPartitionUtil.getBlockID(key.get(),
+			int userBlockId = BlockPartitionUtil.getBlockID(userIdWritable.get(),
 					numUserBlocks);
-			out.write(Integer.toString(blockId), key, resultValue);
+			Iterator<Vector.Element> it = ratingsWritable.get().nonZeroes().iterator();
+			int itemBlockId = BlockPartitionUtil.getBlockID(it.next().index(),
+					numItemBlocks);			
+			
+			String outputName = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId);
+			out.write(outputName, key, resultValue);
 		}
 
 		@Override
