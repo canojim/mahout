@@ -128,29 +128,35 @@ public class BlockRecommenderJob extends AbstractJob {
 		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
 		
-		/* create block-wise user rating */
-		Job userRatings = prepareJob(getInputPath(),
-				pathToUserRatingsByUserBlock(), Mapper.class,
+		/* create block-wise user ratings */
+		Job userRatingsByUserBlock = prepareJob(getInputPath(),
+				pathToUserRatingsByUserBlock(), UserRatingsByUserBlockMapper.class,
 				IntWritable.class, VectorWritable.class,
-				MergeUserVectorsReducer.class, IntWritable.class,
+				Reducer.class, IntWritable.class,
 				VectorWritable.class);
 
 		// use multiple output to support block
-		LazyOutputFormat.setOutputFormatClass(userRatings,
+		LazyOutputFormat.setOutputFormatClass(userRatingsByUserBlock,
 				SequenceFileOutputFormat.class);
-		for (int blockId = 0; blockId < numUserBlock; blockId++) {
-			MultipleOutputs.addNamedOutput(userRatings,
-					Integer.toString(blockId), SequenceFileOutputFormat.class,
-					IntWritable.class, VectorWritable.class);
+		for (int userBlockId = 0; userBlockId < numUserBlock; userBlockId++) {
+			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+
+					String outputName = Integer.toString(userBlockId) + "-" + 
+							Integer.toString(itemBlockId);
+					MultipleOutputs.addNamedOutput(userRatings,
+							outputName, SequenceFileOutputFormat.class,
+							IntWritable.class, VectorWritable.class);
+			}
 		}
 
 		//userRatings.setCombinerClass(MergeVectorsCombiner.class);
-		userRatings.getConfiguration().setInt(NUM_USER_BLOCK, numUserBlock);
+		userRatingsByUserBlock.getConfiguration().setInt(NUM_USER_BLOCK, numUserBlock);
+		userRatingsByUserBlock.getConfiguration().setInt(NUM_ITEM_BLOCK, numItemBlock);
 
-		log.info("Starting userRatings job");
-		boolean succeeded = userRatings.waitForCompletion(true);
+		log.info("Starting userRatingsByUserBlock job");
+		boolean succeeded = userRatingsByUserBlock.waitForCompletion(true);
 		if (!succeeded) {
-			throw new IllegalStateException("userRatings job failed");
+			throw new IllegalStateException("userRatingsByUserBlock job failed");
 		}
 
 		String userFeaturesPath = getOption("userFeatures");
@@ -247,31 +253,34 @@ public class BlockRecommenderJob extends AbstractJob {
 		return 0;
 	}
 
-	static class MergeUserVectorsReducer extends
-			Reducer<IntWritable, VectorWritable, IntWritable, VectorWritable> {
+	static class UserRatingsByUserBlockMapper extends
+			Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
 
 		private MultipleOutputs<IntWritable, VectorWritable> out;
 		private int numUserBlocks;
-		private final VectorWritable resultValue = new VectorWritable();
+		private int numItemBlocks;
 
 		@Override
 		protected void setup(Context ctx) throws IOException,
 				InterruptedException {
 			out = new MultipleOutputs<IntWritable, VectorWritable>(ctx);
 			numUserBlocks = ctx.getConfiguration().getInt(NUM_USER_BLOCK, 10);
+			numItemBlocks = ctx.getConfiguration().getInt(NUM_ITEM_BLOCK, 10);
 		}
 
 		@Override
-		public void reduce(IntWritable key, Iterable<VectorWritable> values,
-				Context ctx) throws IOException, InterruptedException {
-						
-			Vector merged = VectorWritable.merge(values.iterator()).get();
-			//System.out.println("key: " + key + "merged vector: " + merged.size());
+		protected void map(IntWritable userIdWritable,
+				VectorWritable ratingsWritable, Context ctx) throws IOException,
+				InterruptedException {
 			
-			resultValue.set(new SequentialAccessSparseVector(merged));
-			int blockId = BlockPartitionUtil.getBlockID(key.get(),
+			int userBlockId = BlockPartitionUtil.getBlockID(userIdWritable.get(),
 					numUserBlocks);
-			out.write(Integer.toString(blockId), key, resultValue);
+			Iterator<Vector.Element> it = ratingsWritable.get().nonZeroes().iterator();
+			int itemBlockId = BlockPartitionUtil.getBlockID(it.next().index(),
+					numItemBlocks);			
+			
+			String outputName = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId);
+			out.write(outputName, key, resultValue);
 		}
 
 		@Override
