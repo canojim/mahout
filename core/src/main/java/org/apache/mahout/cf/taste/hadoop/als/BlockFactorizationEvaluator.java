@@ -86,10 +86,8 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     addOption("userFeatures", null, "path to the user feature matrix", true);
     addOption("itemFeatures", null, "path to the item feature matrix", true);
     addOption("usesLongIDs", null, "input contains long IDs that need to be translated");
-	addOption("numUserBlocks", null,
-			"number of User Block");
-	addOption("numItemBlocks", null,
-			"number of Item Block");
+    addOption("numUserBlocks", null, "number of User Block");
+    addOption("numItemBlocks", null, "number of Item Block");
 	
     addOutputOption();
 
@@ -98,11 +96,13 @@ public class BlockFactorizationEvaluator extends AbstractJob {
       return -1;
     }
 	
-    numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));   
-	numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
+    numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));
+    numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
     
+    
+    JobManager jobMgr = new JobManager();
+    jobMgr.setQueueName(getOption("queueName"));
     for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
-    	JobControl control = new JobControl("BlockFactorizationEvaluator");    	
     	for (int itemBlockId = 0; itemBlockId < numItemBlocks; itemBlockId++) {
     		
     		String userItemBlockId = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId); 
@@ -122,44 +122,30 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 	          conf.set(ParallelALSFactorizationJob.USES_LONG_IDS, String.valueOf(true));
 	        }
 	        
-	        control.addJob(new ControlledJob(conf));
+	        jobMgr.addJob(predictRatings);
     	}
-    	
-        Thread t = new Thread(control);
-    	log.info("Starting userBlockId: " + userBlockId  + "numItemBlocks: " + numItemBlocks + " block eval jobs.");
-    	t.start();
-    			
-    	while (!control.allFinished()) {
-    		Thread.sleep(1000);
-    	}
-    					
-    	List<ControlledJob> failedJob = control.getFailedJobList();
-    	
-    	if (failedJob != null && failedJob.size() > 0) {
-    		control.stop();
-    		throw new IllegalStateException("control job userBlockId: " + userBlockId + " failed: " + failedJob);
-    	} else {
-    		log.info("control job finished");
-    	}
-    	
-    	control.stop();
-
     }
+
+    boolean allFinished = jobMgr.waitForCompletion();
+      
+      if (!allFinished) {
+        throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
+      }
     
 
-	Job computeRmse = prepareJob(getTempPath("errors"),
+    Job computeRmse = prepareJob(getTempPath("errors"),
 			getOutputPath("rmse.txt"), ComputerRmseMapper.class,
 			IntWritable.class ,DoubleIntPairWritable.class,
 			ComputeRmseReducer.class, 
 			DoubleWritable.class, NullWritable.class);
 	
-	computeRmse.setCombinerClass(ComputeRmseCombiner.class);
+    computeRmse.setCombinerClass(ComputeRmseCombiner.class);
 	
-	log.info("Starting compute rmse job");
-	boolean succeeded = computeRmse.waitForCompletion(true);
-	if (!succeeded) {
-		throw new IllegalStateException("compute rmse job failed!");
-	}
+    log.info("Starting compute rmse job");
+    boolean succeeded = computeRmse.waitForCompletion(true);
+    if (!succeeded) {
+		  throw new IllegalStateException("compute rmse job failed!");
+    }
 
     return 0;
   }
