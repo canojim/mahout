@@ -4,7 +4,7 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.DoubleWritable;
 
 public class LongDoublePairWritable extends PairWritable<LongWritable, DoubleWritable> {
-	public void LongDoublePairWritable() {
+	public LongDoublePairWritable() {
 		super(new LongWritable(), new DoubleWritable());
 	}	
 }

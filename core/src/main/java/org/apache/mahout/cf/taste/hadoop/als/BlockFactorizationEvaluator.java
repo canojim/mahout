@@ -252,8 +252,8 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 		Iterator<DoubleIntPairWritable> iter = vectors.iterator();
 		while (iter.hasNext()) {
 			DoubleIntPairWritable avgInfo = iter.next();
-			sum += avgInfo.getFirst() * avgInfo.getSecond();
-			count += avgInfo.getSecond();
+			sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
+			count += avgInfo.getSecond().get();
 		}
   
 		value.setFirst(sum/count);
@@ -279,8 +279,8 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 			
 			while (iter.hasNext()) {
 				DoubleIntPairWritable avgInfo = iter.next();
-				sum += avgInfo.getFirst() * avgInfo.getSecond();
-				count += avgInfo.getSecond();
+				sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
+				count += avgInfo.getSecond().get();
 			}
 		
 			rmse.set(Math.sqrt(sum/count));

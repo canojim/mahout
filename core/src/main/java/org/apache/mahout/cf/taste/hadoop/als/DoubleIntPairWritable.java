@@ -1,14 +1,10 @@
 package org.apache.mahout.cf.taste.hadoop.als;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hadoop.io.IntWritable;
 
 public class DoubleIntPairWritable extends PairWritable<DoubleWritable, IntWritable> {
-	public void DoubleIntPairWritable() {
+	public DoubleIntPairWritable() {
 		super(new DoubleWritable(), new IntWritable());
 	}
 

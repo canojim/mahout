@@ -38,8 +38,6 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper;
 import org.apache.hadoop.mapreduce.lib.output.LazyOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
@@ -158,6 +156,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		addOption("numIterations", null, "number of iterations", true);
 		addOption("numThreadsPerSolver", null, "threads per solver mapper",
 				String.valueOf(1));
+		addOption("queueName", null,
+				"mapreduce queueName. (optional)", "default");				
 		addOption("usesLongIDs", null,
 				"input contains long IDs that need to be translated");
 		addOption("numUserBlocks", null,
@@ -704,8 +704,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			Iterator<DoubleIntPairWritable> iter = vectors.iterator();
 			while (iter.hasNext()) {
 				DoubleIntPairWritable avgInfo = iter.next();
-				sum += avgInfo.getFirst() * avgInfo.getSecond();
-				count += avgInfo.getSecond();
+				sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
+				count += avgInfo.getSecond().get();
 			}
 	  
 			value.setFirst(sum/count);
@@ -728,8 +728,8 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			Iterator<DoubleIntPairWritable> iter = vectors.iterator();
 			while (iter.hasNext()) {
 				DoubleIntPairWritable avgInfo = iter.next();
-				sum += avgInfo.getFirst() * avgInfo.getSecond();
-				count += avgInfo.getSecond();
+				sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
+				count += avgInfo.getSecond().get();
 			}
 		  
 			value.set(sum/count);

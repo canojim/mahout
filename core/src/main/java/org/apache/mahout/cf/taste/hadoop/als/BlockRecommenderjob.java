@@ -166,6 +166,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		
 		userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlock);
 		userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
+		userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
 		
 		String rcmPath = getOption("recommendFilterPath");
 		if (rcmPath != null)
@@ -264,7 +265,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			boolean allFinished = jobMgr.waitForCompletion();
 			
 			if (!allFinished) {
-				throw new IllegalStateException("BlockPredictionMapper job failed.");
+				throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
 			}
 			
 			Path blocksOutputPath = new Path(getTempPath().toString() + "/result/*/");
@@ -286,7 +287,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			log.info("Starting blockRecommendation (reduce) job");
 			succeeded = blockRecommendation.waitForCompletion(true);
 			if (!succeeded) {
-				throw new IllegalStateException("blockRecommendation job failed");
+				throw new IllegalStateException("blockRecommendation (reduce) job failed");
 			}
 		//}
 

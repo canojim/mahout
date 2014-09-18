@@ -56,7 +56,7 @@ public class JobManager {
 							iterator.remove();
 						} else {
 							String msg = "Job fail: " + job.getJobID().toString() + " " + job.getJobName(); 
-							log.info(msg);
+							log.error(msg);
 							iterator.remove();							
 							return false;
 						}											
@@ -70,7 +70,7 @@ public class JobManager {
 			cleanup();			
 		}
 		
-		return false;
+		return true;
 	}
 	
 	private void cleanup() {

@@ -30,9 +30,14 @@ public abstract class PairWritable<T1 extends WritableComparable, T2 extends Wri
 	}
 
 	@Override
-	public int compareTo(PairWritable o) {
-		return ComparisonChain.start().compare(first.get(), o.first.get())
-		        .compare(second.get(), o.second.get()).result();		
+	public int compareTo(PairWritable o) {		
+		int firstResult = first.compareTo(o.first);
+		int secondResult = second.compareTo(o.second);
+		if (firstResult != 0)
+			return firstResult;
+		else {
+			return secondResult;
+		}
 	}
 
 	@Override
