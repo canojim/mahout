@@ -587,7 +587,10 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			throw new IllegalStateException("calYtY Job failed!");
 		}
 
-		JobControl control = new JobControl("BlockParallelALS");
+		//JobControl control = new JobControl("BlockParallelALS");
+		JobManager jobMgr = new JobManager();
+		jobMgr.setQueueName(getOption("queueName"));
+
 		
 		String blockOutputName = "BlockRatingOutput-" + matrixName + "-" + Integer.toString(currentIteration-1);
 		
@@ -630,27 +633,15 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			MultithreadedMapper.setNumberOfThreads(solveBlockUorI,
 						numThreadsPerSolver);
 				
-			control.addJob(new ControlledJob(solverConf));
+			//control.addJob(new ControlledJob(solverConf));
+			jobMgr.addJob(solveBlockUorI);
 		}
 
-		Thread t = new Thread(control);
-		log.info("Starting " + numBlocks2 + " block rating jobs.");
-		t.start();
-				
-		while (!control.allFinished()) {
-			Thread.sleep(1000);
+		boolean allFinished = jobMgr.waitForCompletion();
+			
+		if (!allFinished) {
+			throw new IllegalStateException("BlockParallelALS job failed.");
 		}
-						
-		List<ControlledJob> failedJob = control.getFailedJobList();
-		
-		if (failedJob != null && failedJob.size() > 0) {
-			control.stop();
-			throw new IllegalStateException("control job failed: " + failedJob);
-		} else {
-			log.info("control job finished");
-		}
-		
-		control.stop();
 		
 		log.info("Aggregating block result");
 		Path updateInputPath = new Path(getTempPath(blockOutputName).toString() + "/*/");
