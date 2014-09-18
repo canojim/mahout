@@ -6,13 +6,10 @@ import java.io.IOException;
 
 import org.apache.hadoop.io.WritableComparable;
 
-public class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<PairWritable> {
+public abstract class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<PairWritable> {
 
 	private T1 first;
-	private T2 second;
-	
-	public PairWritable() {
-	}
+	private T2 second;		
 	
 	public PairWritable(T1 value1, T2 value2) {
 		this.first = value1;
@@ -83,8 +80,5 @@ public class PairWritable<T1 extends WritableComparable, T2 extends WritableComp
 	@Override
 	public String toString() {
 		return first.toString() + "," + second.toString();
-	}
-
-
-	
+	}	
 }

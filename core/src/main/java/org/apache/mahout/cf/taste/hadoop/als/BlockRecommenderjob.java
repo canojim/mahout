@@ -98,11 +98,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	static final String NUM_ITEM_BLOCK = BlockRecommenderJob.class.getName()
 			+ ".numItemBlock";
 	
-	static final int DEFAULT_NUM_RECOMMENDATIONS = 10;
-	
-	static final String QUEUE_NAME = "mapred.job.queue.name";
-	
-	private String defaultQueue = "pp_risk_dst"; //TODO: Pass in from arguments 
+	static final int DEFAULT_NUM_RECOMMENDATIONS = 10;	
 	
 	public static void main(String[] args) throws Exception {
 		ToolRunner.run(new BlockRecommenderJob(), args);
@@ -127,6 +123,8 @@ public class BlockRecommenderJob extends AbstractJob {
 				"index for user long IDs (necessary if usesLongIDs is true)");
 		addOption("recommendFilterPath", null,
 				"filter recommended user id. (optional)");
+		addOption("queueName", null,
+				"mapreduce queueName. (optional)", "default");		
 		addOption("numUserBlock", null, "number of user blocks",
 				String.valueOf(10));
 		addOption("numItemBlock", null, "number of item blocks",
@@ -201,7 +199,9 @@ public class BlockRecommenderJob extends AbstractJob {
  
 			// process each user block
 			//TODO: Revert
-			Job[] predictJobArray = new Job[numItemBlock];
+			JobManager jobMgr = new JobManager();
+			jobMgr.setQueueName(getOption("queueName"));
+			
 			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
 		
 				Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
@@ -239,7 +239,6 @@ public class BlockRecommenderJob extends AbstractJob {
 				blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
 				blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
 
-				blockPredictionConf.set(QUEUE_NAME, defaultQueue);
 				
 				if (usesLongIDs) {
 					blockPredictionConf.set(
@@ -259,31 +258,13 @@ public class BlockRecommenderJob extends AbstractJob {
 
 				MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
 	
-				predictJobArray[itemBlockId] = blockPrediction;
-				
-				log.info("Submitting block prediction map job");
-				blockPrediction.submit();
-				
+				jobMgr.addJob(blockPrediction);
 			}
 			
-			boolean allFinished = false;
+			boolean allFinished = jobMgr.waitForCompletion();
 			
-			while (!allFinished) {								
-				Thread.sleep(10000);
-				
-				for (int i=0; i < numItemBlock; i++) {
-					if (predictJobArray[i] != null) {
-						if (!predictJobArray[i].isComplete()) {							
-							break;
-						} else {
-							if (!predictJobArray[i].isSuccessful()) {
-								throw new IllegalStateException("BlockPrediction job blockId: " + blockId + " itemBlockId: " + i + " failed");
-							}
-						}
-					}
-					
-					if (i == numItemBlock-1) allFinished = true; 
-				}
+			if (!allFinished) {
+				throw new IllegalStateException("BlockPredictionMapper job failed.");
 			}
 			
 			Path blocksOutputPath = new Path(getTempPath().toString() + "/result/*/");
@@ -296,7 +277,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					TextOutputFormat.class); 
 			Configuration blockRecommendationConf = blockRecommendation.getConfiguration();
 			
-			blockRecommendationConf.set(QUEUE_NAME, defaultQueue);
+			blockRecommendationConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
 			blockRecommendationConf.setInt(NUM_RECOMMENDATIONS,
 					Integer.parseInt(getOption("numRecommendations")));
 			blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
