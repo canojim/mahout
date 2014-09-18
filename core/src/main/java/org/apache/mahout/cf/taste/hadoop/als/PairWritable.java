@@ -59,7 +59,7 @@ public class PairWritable<T1 extends WritableComparable, T2 extends WritableComp
 	public boolean equals(Object obj) {
 		if (obj instanceof PairWritable) {
 			PairWritable w = (PairWritable) obj;
-			return first.equals(first) && second.equals(w.second); 
+			return first.equals(w.first) && second.equals(w.second); 
 		}
 		return false;
 	}

@@ -44,7 +44,7 @@ import org.apache.mahout.math.set.OpenIntHashSet;
  */
 public class BlockPredictionMapper
 		extends
-		SharingMapper<IntWritable, VectorWritable, LongWritable, PairWritable<DoubleWritable, LongWritable>, Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>>> {
+		SharingMapper<IntWritable, VectorWritable, LongWritable, DoubleLongPairWritable, Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>>> {
 
 	private int recommendationsPerUser;
 
@@ -53,7 +53,7 @@ public class BlockPredictionMapper
 	private OpenIntLongHashMap itemIDIndex;
 
 	private final LongWritable userIDWritable = new LongWritable();
-	private final PairWritable<DoubleWritable, LongWritable> scoreAndItemWritable = new PairWritable<DoubleWritable, LongWritable>();
+	private final DoubleLongPairWritable scoreAndItemWritable = new DoubleLongPairWritable();
 	private final DoubleWritable scoreWritable = new DoubleWritable();
 	private final LongWritable itemidWritable = new LongWritable();
 	
@@ -69,9 +69,13 @@ public class BlockPredictionMapper
 		pathToBlockU = new Path(conf.get(BlockRecommenderJob.USER_FEATURES_PATH));
 		pathToBlockM = new Path(conf.get(BlockRecommenderJob.ITEM_FEATURES_PATH));
 		
-		OpenIntObjectHashMap<Vector> U = ALS.readMatrixByRows(pathToBlockU, conf);
-		OpenIntObjectHashMap<Vector> M = ALS.readMatrixByRows(pathToBlockM, conf);
- 
+		OpenIntObjectHashMap<Vector> U = ALS.readMatrixByRowsGlob(pathToBlockU, conf);
+		OpenIntObjectHashMap<Vector> M = ALS.readMatrixByRowsGlob(pathToBlockM, conf);
+		
+		System.out.println("pathToBlockU: " + pathToBlockU.toString());
+		System.out.println("pathToBlockM: " + pathToBlockM.toString());
+		
+		System.out.println("U.size: " + U.size() + " M.size: " + M.size());
 		return new Pair<OpenIntObjectHashMap<Vector>,OpenIntObjectHashMap<Vector>>(U, M);
 		
 	}
@@ -87,10 +91,17 @@ public class BlockPredictionMapper
 				ParallelALSFactorizationJob.USES_LONG_IDS, false);
 
 		if (usesLongIDs) {
+			String userIndexPath = conf.get(BlockRecommenderJob.USER_INDEX_PATH);
+			String itemIndexPath = conf.get(BlockRecommenderJob.ITEM_INDEX_PATH);
+			
+			System.out.println("userIndexPath: " + userIndexPath);
+			System.out.println("itemIndexPath: " + itemIndexPath);
+			
 			userIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
 					conf.get(BlockRecommenderJob.USER_INDEX_PATH), conf);
 			itemIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
 					conf.get(BlockRecommenderJob.ITEM_INDEX_PATH), conf);
+			System.out.println("userIDIndex.size: " + userIDIndex.size() + " itemIDIndex.size(): " + itemIDIndex.size());
 		}
 		
 	}
@@ -142,9 +153,15 @@ public class BlockPredictionMapper
 	    }
 	    
 	    List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
+	    
+	    if (recommendedItems.size() == 0) {
+	    	System.out.println("WARN: recommendedItems.size() equals to zero.");
+	    }
+	    System.out.println("recommendedItems.size: " + recommendedItems.size());
+	    
 	    for (RecommendedItem topItem : recommendedItems) {
-	    	scoreWritable.set(topItem.getValue());
-	    	scoreAndItemWritable.setFirst(scoreWritable);
+	    	//scoreWritable.set(topItem.getValue());
+	    	scoreAndItemWritable.setFirst(topItem.getValue());
 	    	
 	    	if (usesLongIDs) {
 	    		long itemID = itemIDIndex.get((int) topItem.getItemID());
@@ -152,8 +169,8 @@ public class BlockPredictionMapper
 	    	} else {
 	    		itemidWritable.set(topItem.getItemID());
 	    	}
-	    	scoreAndItemWritable.setSecond(itemidWritable);
-	    	
+	    	scoreAndItemWritable.setSecond(itemidWritable.get());
+	    		    	
 	    	ctx.write(userIDWritable, scoreAndItemWritable);
 	    }
 	    

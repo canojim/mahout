@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.mahout.cf.taste.hadoop.MutableRecommendedItem;
@@ -12,7 +11,7 @@ import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
 import org.apache.mahout.cf.taste.hadoop.TopItemsQueue;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 
-public class RecommendReducer extends Reducer<LongWritable, PairWritable, 
+public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritable, 
 		LongWritable, RecommendedItemsWritable> {
 
 	private TopItemsQueue topItemsQueue;
@@ -35,20 +34,23 @@ public class RecommendReducer extends Reducer<LongWritable, PairWritable,
 	
 	@Override
 	protected void reduce(LongWritable userIDWritable,
-			Iterable<PairWritable> values,
+			Iterable<DoubleLongPairWritable> values,
 			Context ctx) throws IOException, InterruptedException {
 
-		for (PairWritable<DoubleWritable, LongWritable> i: values) {
-			double score = i.getFirst().get();
+		for (DoubleLongPairWritable i: values) {
+			double score = i.getFirst();
 			MutableRecommendedItem top = topItemsQueue.top();
 			if (score > top.getValue()) {
-				top.set(i.getSecond().get(), (float) score);
+				top.set(i.getSecond(), (float) score);
 	            topItemsQueue.updateTop();
 	        }
 		}
 
 		List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
-
+	    if (recommendedItems.size() == 0) {
+	    	System.out.println("WARN: recommendedItems.size() equals to zero.");
+	    }
+		
 	    if (!recommendedItems.isEmpty()) {
 
 	      // cap predictions to maxRating
@@ -58,7 +60,7 @@ public class RecommendReducer extends Reducer<LongWritable, PairWritable,
 
 	      recommendations.set(recommendedItems);
 	      ctx.write(userIDWritable, recommendations);
-	    }
+	    } 
 			
 	}
 

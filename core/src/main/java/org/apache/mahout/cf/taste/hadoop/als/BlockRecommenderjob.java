@@ -38,8 +38,6 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper;
 import org.apache.hadoop.mapreduce.lib.output.LazyOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
@@ -76,7 +74,7 @@ import com.google.common.base.Preconditions;
  * </ol>
  */
 public class BlockRecommenderJob extends AbstractJob {
-
+	
 	private static final Logger log = LoggerFactory
 			.getLogger(BlockParallelALSFactorizationJob.class);
 
@@ -101,7 +99,11 @@ public class BlockRecommenderJob extends AbstractJob {
 			+ ".numItemBlock";
 	
 	static final int DEFAULT_NUM_RECOMMENDATIONS = 10;
-
+	
+	static final String QUEUE_NAME = "mapred.job.queue.name";
+	
+	private String defaultQueue = "pp_risk_dst"; //TODO: Pass in from arguments 
+	
 	public static void main(String[] args) throws Exception {
 		ToolRunner.run(new BlockRecommenderJob(), args);
 	}
@@ -189,17 +191,18 @@ public class BlockRecommenderJob extends AbstractJob {
 		if (!succeeded) {
 			throw new IllegalStateException("userRatingsByUserBlock job failed");
 		}
-		}
+		} // false
 
 		String userFeaturesPath = getOption("userFeatures");
-
+		
 		//for (int blockId = 0; blockId < numUserBlock; blockId++) {
 		int blockId = 23;
 		//TODO: Revert
-			JobControl control = new JobControl("BlockRecommenderJob");
+ 
 			// process each user block
+			//TODO: Revert
+			Job[] predictJobArray = new Job[numItemBlock];
 			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
-				
 		
 				Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
 						.toString() + "/" + Integer.toString(blockId) + "x" + Integer.toString(itemBlockId) + "-m-*");				
@@ -219,21 +222,25 @@ public class BlockRecommenderJob extends AbstractJob {
 				Job blockPrediction = prepareJob(blockUserRatingsPath,
 						blockOutputPath, SequenceFileInputFormat.class,
 						MultithreadedSharingMapper.class, LongWritable.class,
-						PairWritable.class, SequenceFileOutputFormat.class);
+						DoubleLongPairWritable.class, SequenceFileOutputFormat.class);
 				
 				Configuration blockPredictionConf = blockPrediction
 						.getConfiguration();
 				int numThreads = Integer.parseInt(getOption("numThreads"));
-				blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
-						Integer.parseInt(getOption("numRecommendations")));
 				blockPredictionConf.set(USER_FEATURES_PATH,
 						blockUserFeaturesPath.toString());
 				blockPredictionConf.set(ITEM_FEATURES_PATH,
 						blockItemFeaturesPath.toString());
+
+				blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
+						Integer.parseInt(getOption("numRecommendations")));
 				blockPredictionConf.set(MAX_RATING, getOption("maxRating"));
+				
 				blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
 				blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
 
+				blockPredictionConf.set(QUEUE_NAME, defaultQueue);
+				
 				if (usesLongIDs) {
 					blockPredictionConf.set(
 							ParallelALSFactorizationJob.USES_LONG_IDS,
@@ -252,38 +259,50 @@ public class BlockRecommenderJob extends AbstractJob {
 
 				MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
 	
-				control.addJob(new ControlledJob(blockPredictionConf));
+				predictJobArray[itemBlockId] = blockPrediction;
+				
+				log.info("Submitting block prediction map job");
+				blockPrediction.submit();
+				
 			}
 			
-			Thread t = new Thread(control);
-			log.info("Starting " + numUserBlock + " block prediction jobs.");
-			t.start();
-
-			while (!control.allFinished()) {
-				Thread.sleep(1000);
-			}
-
-			List<ControlledJob> failedJob = control.getFailedJobList();
-
-			if (failedJob != null && failedJob.size() > 0) {
-				control.stop();
-				throw new IllegalStateException("control job failed: " + failedJob);
-			} else {
-				log.info("control job finished");
-			}
-
-			control.stop();
+			boolean allFinished = false;
 			
-			Path blocksOutputPath = new Path(getTempPath().toString() + "/result/");
+			while (!allFinished) {								
+				Thread.sleep(10000);
+				
+				for (int i=0; i < numItemBlock; i++) {
+					if (predictJobArray[i] != null) {
+						if (!predictJobArray[i].isComplete()) {							
+							break;
+						} else {
+							if (!predictJobArray[i].isSuccessful()) {
+								throw new IllegalStateException("BlockPrediction job blockId: " + blockId + " itemBlockId: " + i + " failed");
+							}
+						}
+					}
+					
+					if (i == numItemBlock-1) allFinished = true; 
+				}
+			}
+			
+			Path blocksOutputPath = new Path(getTempPath().toString() + "/result/*/");
 			Job blockRecommendation = prepareJob(blocksOutputPath,
-					getOutputPath(), SequenceFileInputFormat.class,
+					new Path(getOutputPath().toString() + "/recomd/"), SequenceFileInputFormat.class,
 					Mapper.class, LongWritable.class,
-					PairWritable.class, 
+					DoubleLongPairWritable.class, 
 					RecommendReducer.class,
 					LongWritable.class, RecommendedItemsWritable.class, 
 					TextOutputFormat.class); 
+			Configuration blockRecommendationConf = blockRecommendation.getConfiguration();
 			
-			log.info("Starting blockRecommendation job");
+			blockRecommendationConf.set(QUEUE_NAME, defaultQueue);
+			blockRecommendationConf.setInt(NUM_RECOMMENDATIONS,
+					Integer.parseInt(getOption("numRecommendations")));
+			blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
+
+			
+			log.info("Starting blockRecommendation (reduce) job");
 			succeeded = blockRecommendation.waitForCompletion(true);
 			if (!succeeded) {
 				throw new IllegalStateException("blockRecommendation job failed");
