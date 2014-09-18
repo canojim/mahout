@@ -97,12 +97,12 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     if (parsedArgs == null) {
       return -1;
     }
-
-	numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));
+	
+    numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));   
 	numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
-
-    JobControl control = new JobControl("BlockFactorizationEvaluator");
+    
     for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
+    	JobControl control = new JobControl("BlockFactorizationEvaluator");    	
     	for (int itemBlockId = 0; itemBlockId < numItemBlocks; itemBlockId++) {
     		
     		String userItemBlockId = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId); 
@@ -124,26 +124,28 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 	        
 	        control.addJob(new ControlledJob(conf));
     	}
+    	
+        Thread t = new Thread(control);
+    	log.info("Starting userBlockId: " + userBlockId  + "numItemBlocks: " + numItemBlocks + " block eval jobs.");
+    	t.start();
+    			
+    	while (!control.allFinished()) {
+    		Thread.sleep(1000);
+    	}
+    					
+    	List<ControlledJob> failedJob = control.getFailedJobList();
+    	
+    	if (failedJob != null && failedJob.size() > 0) {
+    		control.stop();
+    		throw new IllegalStateException("control job userBlockId: " + userBlockId + " failed: " + failedJob);
+    	} else {
+    		log.info("control job finished");
+    	}
+    	
+    	control.stop();
+
     }
     
-    Thread t = new Thread(control);
-	log.info("Starting " + numUserBlocks * numItemBlocks + " block eval jobs.");
-	t.start();
-			
-	while (!control.allFinished()) {
-		Thread.sleep(1000);
-	}
-					
-	List<ControlledJob> failedJob = control.getFailedJobList();
-	
-	if (failedJob != null && failedJob.size() > 0) {
-		control.stop();
-		throw new IllegalStateException("control job failed: " + failedJob);
-	} else {
-		log.info("control job finished");
-	}
-	
-	control.stop();
 
 	Job computeRmse = prepareJob(getTempPath("errors"),
 			getOutputPath("rmse.txt"), ComputerRmseMapper.class,

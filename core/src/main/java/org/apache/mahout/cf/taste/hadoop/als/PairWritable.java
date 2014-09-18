@@ -5,7 +5,6 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 import org.apache.hadoop.io.WritableComparable;
-
 import com.google.common.collect.ComparisonChain;
 
 public abstract class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<PairWritable> {
@@ -77,8 +76,5 @@ public abstract class PairWritable<T1 extends WritableComparable, T2 extends Wri
 	@Override
 	public String toString() {
 		return first.toString() + "," + second.toString();
-	}
-
-
-	
+	}	
 }
