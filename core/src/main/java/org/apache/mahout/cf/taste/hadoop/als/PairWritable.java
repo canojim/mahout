@@ -8,11 +8,11 @@ import org.apache.hadoop.io.WritableComparable;
 
 import com.google.common.collect.ComparisonChain;
 
-public class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<DoubleIntPairWritable> {
+public abstract class PairWritable<T1 extends WritableComparable, T2 extends WritableComparable> implements WritableComparable<PairWritable> {
 
 	private T1 first;
 	private T2 second;
-		
+
 	public PairWritable(T1 value1, T2 value2) {
 		this.first = value1;
 		this.second = value2;
@@ -53,7 +53,7 @@ public class PairWritable<T1 extends WritableComparable, T2 extends WritableComp
 	public boolean equals(Object obj) {
 		if (obj instanceof PairWritable) {
 			PairWritable w = (PairWritable) obj;
-			return first.equals(first) && second.equals(w.second); 
+			return first.equals(w.first) && second.equals(w.second); 
 		}
 		return false;
 	}
