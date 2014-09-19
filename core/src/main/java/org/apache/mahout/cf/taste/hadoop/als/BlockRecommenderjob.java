@@ -180,26 +180,23 @@ public class BlockRecommenderJob extends AbstractJob {
 					String.valueOf(true));
 		}
 		
-		//TODO: Revert
-		
 		boolean succeeded = false;
 		
-		if (false) {
 		log.info("Starting userRatingsByUserBlock job");
 		succeeded = userRatingsByUserBlock.waitForCompletion(true);
 		if (!succeeded) {
 			throw new IllegalStateException("userRatingsByUserBlock job failed");
 		}
-		} // false
 
 		String userFeaturesPath = getOption("userFeatures");
+
+		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(new Path(rcmPath), userRatingsConf, usesLongIDs), numUserBlock);
 		
-		//for (int blockId = 0; blockId < numUserBlock; blockId++) {
-		int blockId = 23;
-		//TODO: Revert
- 
-			// process each user block
-			//TODO: Revert
+		log.info("Required blocks: " + userBlocks.toString());
+		
+		for (Integer userBlockId : userBlocks) {
+			int blockId = userBlockId.intValue();
+			
 			JobManager jobMgr = new JobManager();
 			jobMgr.setQueueName(getOption("queueName"));
 			
@@ -289,7 +286,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			if (!succeeded) {
 				throw new IllegalStateException("blockRecommendation (reduce) job failed");
 			}
-		//}
+		}
 
 
 		return 0;
@@ -321,7 +318,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			String p = conf.get(BlockRecommenderJob.RECOMMEND_FILTER_PATH);
 			if (p != null) {
 				rcmFilterPath = new Path(p);
-				rcmFilterSet = loadFilterList(conf);
+				rcmFilterSet = loadFilterList(rcmFilterPath, conf, usesLongIDs);
 				Preconditions.checkState(rcmFilterSet.size() > 0, "Empty filter list. Check " + BlockRecommenderJob.RECOMMEND_FILTER_PATH);
 			}
 			
@@ -356,69 +353,83 @@ public class BlockRecommenderJob extends AbstractJob {
 			out.close();
 		}
 		
-		// load recommendation filter list
-		private HashSet<Integer> loadFilterList(Configuration conf) throws IOException {
-			return loadFilterList(rcmFilterPath, conf);
-		}
 
-		// load recommendation filter list
-		private HashSet<Integer> loadFilterList(Path location, Configuration conf)
-				throws IOException {
-
-			HashSet<Integer> s = new HashSet<Integer>();
-
-			FileSystem fileSystem = FileSystem.get(location.toUri(), conf);
-			CompressionCodecFactory factory = new CompressionCodecFactory(conf);
-			FileStatus[] items = fileSystem.listStatus(location);
-
-			if (items == null) {
-				System.out.println("No filter found.");
-				return s;
-			}
-
-			for (FileStatus item : items) {
-
-				System.out.println("loadFilterList file name: " + item.getPath().getName());
-				// ignoring files like _SUCCESS
-				if (item.getPath().getName().startsWith("_")) {
-					continue;
-				}
-
-				CompressionCodec codec = factory.getCodec(item.getPath());
-				InputStream stream = null;
-
-				// check if we have a compression codec we need to use
-				if (codec != null) {
-					stream = codec
-							.createInputStream(fileSystem.open(item.getPath()));
-				} else {
-					stream = fileSystem.open(item.getPath());
-				}
-
-				StringWriter writer = new StringWriter();
-				IOUtils.copy(stream, writer, "UTF-8");
-				String raw = writer.toString();
-
-				for (String str : raw.split("\n")) {
-					int id; 
-					if (usesLongIDs) {
-						long longId = Long.parseLong(str.trim());
-						id = TasteHadoopUtils.idToIndex(longId);
-						System.out.println("Long ID: " + longId + " Short ID :" + id);
-					} else {
-						id = Integer.parseInt(str.trim());
-					}
-					s.add(new Integer(id));
-				}
-			}
-
-			System.out.println("filter size: " + s.size());
-			
-			return s;
-		}
 	}
 
 	private Path pathToUserRatingsByUserBlock() {
 		return getOutputPath("userRatingsByUserBlock");
+	}
+	
+	private static HashSet<Integer> getRequiredBlock(HashSet<Integer> filters, int numBlocks) {
+		HashSet<Integer> block = new HashSet<Integer>();
+		
+		if (filters.size() > 0) {
+			for (Integer i: filters) {			
+				block.add(new Integer(BlockPartitionUtil.getBlockID(i.intValue(), numBlocks)));
+			}					
+		} else {
+			//if no filter, require all the blocks
+			for (int i=0; i < numBlocks; i++) {
+				block.add(new Integer(i));
+			}
+		}
+		
+		return block;
+	}
+	
+	// load recommendation filter list
+	private static HashSet<Integer> loadFilterList(Path location, Configuration conf, boolean usesLongIDs)
+			throws IOException {
+
+		HashSet<Integer> s = new HashSet<Integer>();
+
+		FileSystem fileSystem = FileSystem.get(location.toUri(), conf);
+		CompressionCodecFactory factory = new CompressionCodecFactory(conf);
+		FileStatus[] items = fileSystem.listStatus(location);
+
+		if (items == null) {
+			System.out.println("No filter found.");
+			return s;
+		}
+
+		for (FileStatus item : items) {
+
+			System.out.println("loadFilterList file name: " + item.getPath().getName());
+			// ignoring files like _SUCCESS
+			if (item.getPath().getName().startsWith("_")) {
+				continue;
+			}
+
+			CompressionCodec codec = factory.getCodec(item.getPath());
+			InputStream stream = null;
+
+			// check if we have a compression codec we need to use
+			if (codec != null) {
+				stream = codec
+						.createInputStream(fileSystem.open(item.getPath()));
+			} else {
+				stream = fileSystem.open(item.getPath());
+			}
+
+			StringWriter writer = new StringWriter();
+			IOUtils.copy(stream, writer, "UTF-8");
+			String raw = writer.toString();
+
+			for (String str : raw.split("\n")) {
+				int id; 
+				if (usesLongIDs) {
+					long longId = Long.parseLong(str.trim());
+					id = TasteHadoopUtils.idToIndex(longId);
+					System.out.println("Long ID: " + longId + " Short ID :" + id);
+				} else {
+					id = Integer.parseInt(str.trim());
+				}
+				s.add(new Integer(id));
+			}
+		}
+
+		System.out.println("filter size: " + s.size());
+		
+		return s;
 	}
 }
