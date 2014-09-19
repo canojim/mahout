@@ -33,7 +33,10 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.LazyOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.cf.taste.hadoop.TasteHadoopUtils;
 import org.apache.mahout.cf.taste.impl.common.FullRunningAverage;
@@ -65,11 +68,14 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 	private static final Logger log = LoggerFactory
 			.getLogger(BlockFactorizationEvaluator.class);
 	
-  private static final String USER_FEATURES_PATH = BlockRecommenderJob.class.getName() + ".userFeatures";
-  private static final String ITEM_FEATURES_PATH = BlockRecommenderJob.class.getName() + ".itemFeatures";
+  private static final String USER_FEATURES_PATH = BlockFactorizationEvaluator.class.getName() + ".userFeatures";
+  private static final String ITEM_FEATURES_PATH = BlockFactorizationEvaluator.class.getName() + ".itemFeatures";
   private static final String USER_BLOCKID = BlockFactorizationEvaluator.class.getName() + ".userBlockid";
   private static final String ITEM_BLOCKID = BlockFactorizationEvaluator.class.getName() + ".itemBlockid";
-  
+  private static final String USES_LONG_IDS = BlockFactorizationEvaluator.class.getName() + ".usesLongIDs";
+  private static final String NUM_USER_BLOCK = BlockFactorizationEvaluator.class.getName() + ".numUserBlock";
+  private static final String NUM_ITEM_BLOCK = BlockFactorizationEvaluator.class.getName() + ".numItemBlock";
+	
   private int numUserBlocks;
   private int numItemBlocks;
 	
@@ -97,19 +103,20 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 	
     numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));
     numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
+    boolean usesLongIDs = Boolean.parseBoolean(getOption("usesLongIDs"));
 
     /* create block-wise ratings */
     Job userRatingsByBlock = prepareJob(
-      getInputPath(),
-      pathToUserRatingsByBlock(), UserRatingsByBlockMapper.class,
+      getInputPath(), pathToUserRatingsByBlock(), 
+      TextInputFormat.class, UserRatingsByBlockMapper.class,
       LongWritable.class, Text.class,
       TextOutputFormat.class);
 
     // use multiple output to support block
     LazyOutputFormat.setOutputFormatClass(userRatingsByBlock,
       TextOutputFormat.class);
-    for (int userBlockId = 0; userBlockId < numUserBlock; userBlockId++) {
-      for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+    for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
+      for (int itemBlockId = 0; itemBlockId < numItemBlocks; itemBlockId++) {
 
           String outputName = Integer.toString(userBlockId) + "x" + 
               Integer.toString(itemBlockId);
@@ -122,12 +129,24 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     //userRatings.setCombinerClass(MergeVectorsCombiner.class);
     Configuration userRatingsConf = userRatingsByBlock.getConfiguration();
     
-    userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlock);
-    userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
+    userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlocks);
+    userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlocks);
     userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+    if (usesLongIDs) {
+    	userRatingsConf.set(
+    			BlockFactorizationEvaluator.USES_LONG_IDS,
+				String.valueOf(true));
+	}
 
+	boolean succeeded = false;
     
+	log.info("Starting userRatingsByBlock job");
+	succeeded = userRatingsByBlock.waitForCompletion(true);
+	if (!succeeded) {
+		throw new IllegalStateException("userRatingsByBlock job failed");
+	}
     
+	
     JobManager jobMgr = new JobManager();
     jobMgr.setQueueName(getOption("queueName"));
     for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
@@ -143,14 +162,14 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     	            IntPairWritable.class, DoubleWritable.class, SequenceFileOutputFormat.class);
 
 	        Configuration conf = predictRatings.getConfiguration();
-	        conf.set(USER_FEATURES_PATH, getOption("userFeatures") + "/" + Integer.toString(userBlockId) + "-r-");
-	        conf.set(ITEM_FEATURES_PATH, getOption("itemFeatures") + "/" + Integer.toString(itemBlockId) + "-r-");
+	        conf.set(USER_FEATURES_PATH, getOption("userFeatures") + "/" + Integer.toString(userBlockId) + "-r-*");
+	        conf.set(ITEM_FEATURES_PATH, getOption("itemFeatures") + "/" + Integer.toString(itemBlockId) + "-r-*");
 	        conf.setInt(USER_BLOCKID, userBlockId);
 	        conf.setInt(ITEM_BLOCKID, itemBlockId);
 	        
-	        boolean usesLongIDs = Boolean.parseBoolean(getOption("usesLongIDs"));
+	        
 	        if (usesLongIDs) {
-	          conf.set(ParallelALSFactorizationJob.USES_LONG_IDS, String.valueOf(true));
+	          conf.set(BlockFactorizationEvaluator.USES_LONG_IDS, String.valueOf(true));
 	        }
 	        
 	        jobMgr.addJob(predictRatings);
@@ -159,13 +178,13 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 
     boolean allFinished = jobMgr.waitForCompletion();
       
-      if (!allFinished) {
-        throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
-      }
-    
+    if (!allFinished) {
+       throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
+    }
 
-    Job computeRmse = prepareJob(getTempPath("errors"),
-			getOutputPath("rmse.txt"), ComputerRmseMapper.class,
+
+    Job computeRmse = prepareJob(new Path(getTempPath("errors").toString() + "/*-*/part*"),
+			getOutputPath("rmse"), ComputerRmseMapper.class,
 			IntWritable.class ,DoubleIntPairWritable.class,
 			ComputeRmseReducer.class, 
 			DoubleWritable.class, NullWritable.class);
@@ -174,7 +193,7 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     computeRmse.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
     
     log.info("Starting compute rmse job");
-    boolean succeeded = computeRmse.waitForCompletion(true);
+    succeeded = computeRmse.waitForCompletion(true);
     if (!succeeded) {
 		  throw new IllegalStateException("compute rmse job failed!");
     }
@@ -195,11 +214,9 @@ public class BlockFactorizationEvaluator extends AbstractJob {
   }
 
   static class UserRatingsByBlockMapper extends
-    Mapper<LongWritable, Text, LongWritable, Text> {
+    Mapper<LongWritable, Text, NullWritable, Text> {
 
-    private MultipleOutputs<IntWritable, VectorWritable> out;
-    private final IntPairWritable key = new IntPairWritable();
-    private final VectorWritable value = new VectorWritable(true);
+    private MultipleOutputs<NullWritable, Text> out;
 
     private int numUserBlocks;
     private int numItemBlocks;
@@ -211,9 +228,14 @@ public class BlockFactorizationEvaluator extends AbstractJob {
       
       Configuration conf = ctx.getConfiguration();
       
-      out = new MultipleOutputs<IntWritable, VectorWritable>(ctx);
-      numUserBlocks = ctx.getConfiguration().getInt(NUM_USER_BLOCK, 10);
-      numItemBlocks = ctx.getConfiguration().getInt(NUM_ITEM_BLOCK, 10);
+      out = new MultipleOutputs<NullWritable, Text>(ctx);
+      numUserBlocks = conf.getInt(NUM_USER_BLOCK, 10);
+      numItemBlocks = conf.getInt(NUM_ITEM_BLOCK, 10);
+      usesLongIDs = conf.getBoolean(BlockFactorizationEvaluator.USES_LONG_IDS,
+				false);
+      
+      System.out.println("usesLongIDs: " + usesLongIDs + " numUserBlocks:" + numUserBlocks + " numItemBlocks:" + numItemBlocks);
+
     }
 
     @Override
@@ -225,14 +247,13 @@ public class BlockFactorizationEvaluator extends AbstractJob {
           tokens[TasteHadoopUtils.USER_ID_POS], usesLongIDs);
       int itemID = TasteHadoopUtils.readID(
           tokens[TasteHadoopUtils.ITEM_ID_POS], usesLongIDs);
-      float rating = Float.parseFloat(tokens[2]);
         
       int userBlockId = BlockPartitionUtil.getBlockID(userID, numUserBlocks);
-      int itemBlockId = BlockPartitionUtil.getBlockID(itemID, numItemBlocks);     
+      int itemBlockId = BlockPartitionUtil.getBlockID(itemID, numItemBlocks);   
+      
       String outputName = Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId);
       
-      
-      out.write(outputName, offset, line);
+      out.write(outputName, NullWritable.get(), line);
     }
 
     @Override
@@ -267,10 +288,13 @@ public class BlockFactorizationEvaluator extends AbstractJob {
       U = ALS.readMatrixByRowsGlob(pathToU, conf);
       M = ALS.readMatrixByRowsGlob(pathToM, conf);
 
-      usesLongIDs = conf.getBoolean(ParallelALSFactorizationJob.USES_LONG_IDS, false);
-      
+      usesLongIDs = conf.getBoolean(BlockFactorizationEvaluator.USES_LONG_IDS, false);
+            
       userBlockId = conf.getInt(USER_BLOCKID, 0);
       itemBlockId = conf.getInt(ITEM_BLOCKID, 0);
+      
+      System.out.println("usesLongIDs: " + usesLongIDs + " userBlockId: " + userBlockId + " itemBlockId:" + itemBlockId);
+      
     }
 
     @Override
@@ -287,8 +311,10 @@ public class BlockFactorizationEvaluator extends AbstractJob {
         error.set(rating - estimate);
         outkey.setFirst(userBlockId);
         outkey.setSecond(itemBlockId);
-        
+        System.out.println("ctx.write userID: " + userID + " itemID:" + itemID);
         ctx.write(outkey, error);
+      } else {
+    	  System.out.println("else userID: " + userID + " itemID:" + itemID);
       }
     }
   }
