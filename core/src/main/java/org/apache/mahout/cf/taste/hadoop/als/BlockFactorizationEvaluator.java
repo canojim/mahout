@@ -97,6 +97,35 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 	
     numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));
     numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
+
+    /* create block-wise ratings */
+    Job userRatingsByBlock = prepareJob(
+      getInputPath(),
+      pathToUserRatingsByBlock(), UserRatingsByBlockMapper.class,
+      LongWritable.class, Text.class,
+      TextOutputFormat.class);
+
+    // use multiple output to support block
+    LazyOutputFormat.setOutputFormatClass(userRatingsByBlock,
+      TextOutputFormat.class);
+    for (int userBlockId = 0; userBlockId < numUserBlock; userBlockId++) {
+      for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+
+          String outputName = Integer.toString(userBlockId) + "x" + 
+              Integer.toString(itemBlockId);
+          MultipleOutputs.addNamedOutput(userRatingsByBlock,
+              outputName, TextOutputFormat.class,
+              LongWritable.class, Text.class);
+      }
+    }
+
+    //userRatings.setCombinerClass(MergeVectorsCombiner.class);
+    Configuration userRatingsConf = userRatingsByBlock.getConfiguration();
+    
+    userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlock);
+    userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
+    userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+
     
     
     JobManager jobMgr = new JobManager();
@@ -107,7 +136,7 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     		String userItemBlockId = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId); 
     		Path errors = new Path(getTempPath("errors"), userItemBlockId);
     		
-    		Path blockUserRatingsPath = new Path(getInputPath()
+    		Path blockUserRatingsPath = new Path(pathToUserRatingsByBlock()
 					.toString() + "/" + Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
     		
     	    Job predictRatings = prepareJob(blockUserRatingsPath, errors , TextInputFormat.class, BlockPredictRatingsMapper.class,
@@ -164,6 +193,57 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 
     return Math.sqrt(average.getAverage());
   }
+
+  static class UserRatingsByBlockMapper extends
+    Mapper<LongWritable, Text, LongWritable, Text> {
+
+    private MultipleOutputs<IntWritable, VectorWritable> out;
+    private final IntPairWritable key = new IntPairWritable();
+    private final VectorWritable value = new VectorWritable(true);
+
+    private int numUserBlocks;
+    private int numItemBlocks;
+    private boolean usesLongIDs;
+    
+    @Override
+    protected void setup(Context ctx) throws IOException,
+        InterruptedException {
+      
+      Configuration conf = ctx.getConfiguration();
+      
+      out = new MultipleOutputs<IntWritable, VectorWritable>(ctx);
+      numUserBlocks = ctx.getConfiguration().getInt(NUM_USER_BLOCK, 10);
+      numItemBlocks = ctx.getConfiguration().getInt(NUM_ITEM_BLOCK, 10);
+    }
+
+    @Override
+    protected void map(LongWritable offset, Text line, Context ctx) 
+      throws IOException, InterruptedException {
+      
+      String[] tokens = TasteHadoopUtils.splitPrefTokens(line.toString());
+      int userID = TasteHadoopUtils.readID(
+          tokens[TasteHadoopUtils.USER_ID_POS], usesLongIDs);
+      int itemID = TasteHadoopUtils.readID(
+          tokens[TasteHadoopUtils.ITEM_ID_POS], usesLongIDs);
+      float rating = Float.parseFloat(tokens[2]);
+        
+      int userBlockId = BlockPartitionUtil.getBlockID(userID, numUserBlocks);
+      int itemBlockId = BlockPartitionUtil.getBlockID(itemID, numItemBlocks);     
+      String outputName = Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId);
+      
+      
+      out.write(outputName, offset, line);
+    }
+
+    @Override
+    protected void cleanup(Context context) throws IOException,
+        InterruptedException {
+      out.close();
+    }
+    
+
+  }
+
 
   public static class BlockPredictRatingsMapper extends Mapper<LongWritable,Text,IntPairWritable,DoubleWritable> {
 
@@ -278,4 +358,7 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 		}
   }	
 
+  private Path pathToUserRatingsByBlock() {
+    return getOutputPath("userRatingsByBlock");
+  }
 }
