@@ -33,8 +33,6 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
-import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.cf.taste.hadoop.TasteHadoopUtils;
@@ -88,7 +86,8 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     addOption("usesLongIDs", null, "input contains long IDs that need to be translated");
     addOption("numUserBlocks", null, "number of User Block");
     addOption("numItemBlocks", null, "number of Item Block");
-	
+    addOption("queueName", null, "mapreduce queueName. (optional)", "default");		
+    
     addOutputOption();
 
     Map<String,List<String>> parsedArgs = parseArguments(args);
@@ -108,7 +107,10 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     		String userItemBlockId = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId); 
     		Path errors = new Path(getTempPath("errors"), userItemBlockId);
     		
-    	    Job predictRatings = prepareJob(getInputPath(), errors , TextInputFormat.class, BlockPredictRatingsMapper.class,
+    		Path blockUserRatingsPath = new Path(getInputPath()
+					.toString() + "/" + Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
+    		
+    	    Job predictRatings = prepareJob(blockUserRatingsPath, errors , TextInputFormat.class, BlockPredictRatingsMapper.class,
     	            IntPairWritable.class, DoubleWritable.class, SequenceFileOutputFormat.class);
 
 	        Configuration conf = predictRatings.getConfiguration();
@@ -140,7 +142,8 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 			DoubleWritable.class, NullWritable.class);
 	
     computeRmse.setCombinerClass(ComputeRmseCombiner.class);
-	
+    computeRmse.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+    
     log.info("Starting compute rmse job");
     boolean succeeded = computeRmse.waitForCompletion(true);
     if (!succeeded) {
