@@ -65,9 +65,9 @@ import org.slf4j.LoggerFactory;
  */
 public class BlockFactorizationEvaluator extends AbstractJob {
 
-	private static final Logger log = LoggerFactory
-			.getLogger(BlockFactorizationEvaluator.class);
-	
+  private static final Logger log = LoggerFactory
+      .getLogger(BlockFactorizationEvaluator.class);
+  
   private static final String USER_FEATURES_PATH = BlockFactorizationEvaluator.class.getName() + ".userFeatures";
   private static final String ITEM_FEATURES_PATH = BlockFactorizationEvaluator.class.getName() + ".itemFeatures";
   private static final String USER_BLOCKID = BlockFactorizationEvaluator.class.getName() + ".userBlockid";
@@ -75,10 +75,10 @@ public class BlockFactorizationEvaluator extends AbstractJob {
   private static final String USES_LONG_IDS = BlockFactorizationEvaluator.class.getName() + ".usesLongIDs";
   private static final String NUM_USER_BLOCK = BlockFactorizationEvaluator.class.getName() + ".numUserBlock";
   private static final String NUM_ITEM_BLOCK = BlockFactorizationEvaluator.class.getName() + ".numItemBlock";
-	
+  
   private int numUserBlocks;
   private int numItemBlocks;
-	
+  
   public static void main(String[] args) throws Exception {
     ToolRunner.run(new BlockFactorizationEvaluator(), args);
   }
@@ -92,7 +92,7 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     addOption("usesLongIDs", null, "input contains long IDs that need to be translated");
     addOption("numUserBlocks", null, "number of User Block");
     addOption("numItemBlocks", null, "number of Item Block");
-    addOption("queueName", null, "mapreduce queueName. (optional)", "default");		
+    addOption("queueName", null, "mapreduce queueName. (optional)", "default");   
     
     addOutputOption();
 
@@ -100,83 +100,84 @@ public class BlockFactorizationEvaluator extends AbstractJob {
     if (parsedArgs == null) {
       return -1;
     }
-	
+  
     numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));
     numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
     boolean usesLongIDs = Boolean.parseBoolean(getOption("usesLongIDs"));
+    boolean succeeded;
+    
+    JobManager jobMgr = new JobManager();
+    jobMgr.setQueueName(getOption("queueName"));
+    
+    for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
+        /* create block-wise ratings */
+        Job userRatingsByBlock = prepareJob(
+          getInputPath(), pathToUserRatingsByBlock(userBlockId), 
+          TextInputFormat.class, UserRatingsByBlockMapper.class,
+          LongWritable.class, Text.class,
+          TextOutputFormat.class);
 
-    /* create block-wise ratings */
-    Job userRatingsByBlock = prepareJob(
-      getInputPath(), pathToUserRatingsByBlock(), 
-      TextInputFormat.class, UserRatingsByBlockMapper.class,
-      LongWritable.class, Text.class,
-      TextOutputFormat.class);
+        LazyOutputFormat.setOutputFormatClass(userRatingsByBlock,
+          TextOutputFormat.class);
+        
+        for (int itemBlockId = 0; itemBlockId < numItemBlocks; itemBlockId++) {
 
-    // use multiple output to support block
-    LazyOutputFormat.setOutputFormatClass(userRatingsByBlock,
-      TextOutputFormat.class);
+            String outputName = Integer.toString(userBlockId) + "x" + 
+                Integer.toString(itemBlockId);
+            MultipleOutputs.addNamedOutput(userRatingsByBlock,
+                outputName, TextOutputFormat.class,
+                LongWritable.class, Text.class);
+        }
+        
+        //userRatings.setCombinerClass(MergeVectorsCombiner.class);
+        Configuration userRatingsConf = userRatingsByBlock.getConfiguration();
+        
+        userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlocks);
+        userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlocks);
+        userRatingsConf.setInt(USER_BLOCKID, userBlockId);
+        if (usesLongIDs) {
+          userRatingsConf.set(
+              BlockFactorizationEvaluator.USES_LONG_IDS,
+            String.valueOf(true));
+      }
+        
+        jobMgr.addJob(userRatingsByBlock);
+    }
+    
+    boolean allFinished = jobMgr.waitForCompletion();
+    
+    if (!allFinished) {
+       throw new IllegalStateException("Some UserRatingsByBlock jobs failed.");
+    }
+    
     for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
       for (int itemBlockId = 0; itemBlockId < numItemBlocks; itemBlockId++) {
+        
+        String userItemBlockId = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId); 
+        Path errors = new Path(getTempPath("errors"), userItemBlockId);
+        
+        Path blockUserRatingsPath = new Path(pathToUserRatingsByBlock(userBlockId).toString() 
+            + "/" + Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
+        
+          Job predictRatings = prepareJob(blockUserRatingsPath, errors , TextInputFormat.class, BlockPredictRatingsMapper.class,
+                  IntPairWritable.class, DoubleWritable.class, SequenceFileOutputFormat.class);
 
-          String outputName = Integer.toString(userBlockId) + "x" + 
-              Integer.toString(itemBlockId);
-          MultipleOutputs.addNamedOutput(userRatingsByBlock,
-              outputName, TextOutputFormat.class,
-              LongWritable.class, Text.class);
+          Configuration conf = predictRatings.getConfiguration();
+          conf.set(USER_FEATURES_PATH, getOption("userFeatures") + "/" + Integer.toString(userBlockId) + "-r-*");
+          conf.set(ITEM_FEATURES_PATH, getOption("itemFeatures") + "/" + Integer.toString(itemBlockId) + "-r-*");
+          conf.setInt(USER_BLOCKID, userBlockId);
+          conf.setInt(ITEM_BLOCKID, itemBlockId);
+          
+          
+          if (usesLongIDs) {
+            conf.set(BlockFactorizationEvaluator.USES_LONG_IDS, String.valueOf(true));
+          }
+          
+          jobMgr.addJob(predictRatings);
       }
     }
 
-    //userRatings.setCombinerClass(MergeVectorsCombiner.class);
-    Configuration userRatingsConf = userRatingsByBlock.getConfiguration();
-    
-    userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlocks);
-    userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlocks);
-    userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
-    if (usesLongIDs) {
-    	userRatingsConf.set(
-    			BlockFactorizationEvaluator.USES_LONG_IDS,
-				String.valueOf(true));
-	}
-
-	boolean succeeded = false;
-    
-	log.info("Starting userRatingsByBlock job");
-	succeeded = userRatingsByBlock.waitForCompletion(true);
-	if (!succeeded) {
-		throw new IllegalStateException("userRatingsByBlock job failed");
-	}
-    
-	
-    JobManager jobMgr = new JobManager();
-    jobMgr.setQueueName(getOption("queueName"));
-    for (int userBlockId = 0; userBlockId < numUserBlocks; userBlockId++) {
-    	for (int itemBlockId = 0; itemBlockId < numItemBlocks; itemBlockId++) {
-    		
-    		String userItemBlockId = Integer.toString(userBlockId) + "-" + Integer.toString(itemBlockId); 
-    		Path errors = new Path(getTempPath("errors"), userItemBlockId);
-    		
-    		Path blockUserRatingsPath = new Path(pathToUserRatingsByBlock()
-					.toString() + "/" + Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
-    		
-    	    Job predictRatings = prepareJob(blockUserRatingsPath, errors , TextInputFormat.class, BlockPredictRatingsMapper.class,
-    	            IntPairWritable.class, DoubleWritable.class, SequenceFileOutputFormat.class);
-
-	        Configuration conf = predictRatings.getConfiguration();
-	        conf.set(USER_FEATURES_PATH, getOption("userFeatures") + "/" + Integer.toString(userBlockId) + "-r-*");
-	        conf.set(ITEM_FEATURES_PATH, getOption("itemFeatures") + "/" + Integer.toString(itemBlockId) + "-r-*");
-	        conf.setInt(USER_BLOCKID, userBlockId);
-	        conf.setInt(ITEM_BLOCKID, itemBlockId);
-	        
-	        
-	        if (usesLongIDs) {
-	          conf.set(BlockFactorizationEvaluator.USES_LONG_IDS, String.valueOf(true));
-	        }
-	        
-	        jobMgr.addJob(predictRatings);
-    	}
-    }
-
-    boolean allFinished = jobMgr.waitForCompletion();
+    allFinished = jobMgr.waitForCompletion();
       
     if (!allFinished) {
        throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
@@ -184,18 +185,18 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 
 
     Job computeRmse = prepareJob(new Path(getTempPath("errors").toString() + "/*-*/part*"),
-			getOutputPath("rmse"), ComputerRmseMapper.class,
-			IntWritable.class ,DoubleIntPairWritable.class,
-			ComputeRmseReducer.class, 
-			DoubleWritable.class, NullWritable.class);
-	
+      getOutputPath("rmse"), ComputerRmseMapper.class,
+      IntWritable.class ,DoubleIntPairWritable.class,
+      ComputeRmseReducer.class, 
+      DoubleWritable.class, NullWritable.class);
+  
     computeRmse.setCombinerClass(ComputeRmseCombiner.class);
     computeRmse.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
     
     log.info("Starting compute rmse job");
     succeeded = computeRmse.waitForCompletion(true);
     if (!succeeded) {
-		  throw new IllegalStateException("compute rmse job failed!");
+      throw new IllegalStateException("compute rmse job failed!");
     }
 
     return 0;
@@ -220,6 +221,7 @@ public class BlockFactorizationEvaluator extends AbstractJob {
 
     private int numUserBlocks;
     private int numItemBlocks;
+    private int jobUserBlockId;
     private boolean usesLongIDs;
     
     @Override
@@ -231,8 +233,9 @@ public class BlockFactorizationEvaluator extends AbstractJob {
       out = new MultipleOutputs<NullWritable, Text>(ctx);
       numUserBlocks = conf.getInt(NUM_USER_BLOCK, 10);
       numItemBlocks = conf.getInt(NUM_ITEM_BLOCK, 10);
+      jobUserBlockId = conf.getInt(USER_BLOCKID, -1);
       usesLongIDs = conf.getBoolean(BlockFactorizationEvaluator.USES_LONG_IDS,
-				false);
+        false);
       
       System.out.println("usesLongIDs: " + usesLongIDs + " numUserBlocks:" + numUserBlocks + " numItemBlocks:" + numItemBlocks);
 
@@ -251,9 +254,10 @@ public class BlockFactorizationEvaluator extends AbstractJob {
       int userBlockId = BlockPartitionUtil.getBlockID(userID, numUserBlocks);
       int itemBlockId = BlockPartitionUtil.getBlockID(itemID, numItemBlocks);   
       
+      if (jobUserBlockId==userBlockId) {
       String outputName = Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId);
-      
       out.write(outputName, NullWritable.get(), line);
+      }
     }
 
     @Override
@@ -311,80 +315,80 @@ public class BlockFactorizationEvaluator extends AbstractJob {
         error.set(rating - estimate);
         outkey.setFirst(userBlockId);
         outkey.setSecond(itemBlockId);
-        System.out.println("ctx.write userID: " + userID + " itemID:" + itemID);
+        // System.out.println("ctx.write userID: " + userID + " itemID:" + itemID);
         ctx.write(outkey, error);
       } else {
-    	  System.out.println("else userID: " + userID + " itemID:" + itemID);
+        //System.out.println("else userID: " + userID + " itemID:" + itemID);
       }
     }
   }
 
   static class ComputerRmseMapper extends
-  	Mapper<IntPairWritable, DoubleWritable, IntWritable, DoubleIntPairWritable> {
-	  	IntWritable outkey = new IntWritable(0);
-	  	DoubleIntPairWritable error = new DoubleIntPairWritable();
-	  	
-		@Override
-		protected void map(IntPairWritable key, DoubleWritable value, Context ctx)
-				throws IOException, InterruptedException {
-			error.setFirst(value.get() * value.get()); // error * error
-			error.setSecond(1);
-			ctx.write(outkey, error);
-		}
+    Mapper<IntPairWritable, DoubleWritable, IntWritable, DoubleIntPairWritable> {
+      IntWritable outkey = new IntWritable(0);
+      DoubleIntPairWritable error = new DoubleIntPairWritable();
+      
+    @Override
+    protected void map(IntPairWritable key, DoubleWritable value, Context ctx)
+        throws IOException, InterruptedException {
+      error.setFirst(value.get() * value.get()); // error * error
+      error.setSecond(1);
+      ctx.write(outkey, error);
+    }
   }
   
   static class ComputeRmseCombiner extends
-	Reducer<IntWritable, DoubleIntPairWritable, IntWritable, DoubleIntPairWritable> {
+  Reducer<IntWritable, DoubleIntPairWritable, IntWritable, DoubleIntPairWritable> {
 
-	private DoubleIntPairWritable value = new DoubleIntPairWritable();
+  private DoubleIntPairWritable value = new DoubleIntPairWritable();
 
-	@Override
-	public void reduce(IntWritable key, Iterable<DoubleIntPairWritable> vectors, Context ctx)
-			throws IOException, InterruptedException {
+  @Override
+  public void reduce(IntWritable key, Iterable<DoubleIntPairWritable> vectors, Context ctx)
+      throws IOException, InterruptedException {
   
-		double sum = 0.0;
-		int count = 0;
-		Iterator<DoubleIntPairWritable> iter = vectors.iterator();
-		while (iter.hasNext()) {
-			DoubleIntPairWritable avgInfo = iter.next();
-			sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
-			count += avgInfo.getSecond().get();
-		}
+    double sum = 0.0;
+    int count = 0;
+    Iterator<DoubleIntPairWritable> iter = vectors.iterator();
+    while (iter.hasNext()) {
+      DoubleIntPairWritable avgInfo = iter.next();
+      sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
+      count += avgInfo.getSecond().get();
+    }
   
-		value.setFirst(sum/count);
-		value.setSecond(count);
-		ctx.write(key, value);
-	}
-  }	
+    value.setFirst(sum/count);
+    value.setSecond(count);
+    ctx.write(key, value);
+  }
+  } 
   
-	
+  
   static class ComputeRmseReducer extends
-  	Reducer<IntWritable, DoubleIntPairWritable, DoubleWritable, NullWritable> {
+    Reducer<IntWritable, DoubleIntPairWritable, DoubleWritable, NullWritable> {
 
-	  	private DoubleWritable rmse = new DoubleWritable();
+      private DoubleWritable rmse = new DoubleWritable();
 
-		@Override
-		public void reduce(IntWritable key, Iterable<DoubleIntPairWritable> errors, Context ctx)
-				throws IOException, InterruptedException {
-		
-			Iterator<DoubleIntPairWritable> iter = errors.iterator();
-			
-			double sum = 0.0;
-			int count = 0;
-			
-			while (iter.hasNext()) {
-				DoubleIntPairWritable avgInfo = iter.next();
-				sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
-				count += avgInfo.getSecond().get();
-			}
-		
-			rmse.set(Math.sqrt(sum/count));
-			ctx.write(rmse, NullWritable.get());
-			
-		}
-  }	
+    @Override
+    public void reduce(IntWritable key, Iterable<DoubleIntPairWritable> errors, Context ctx)
+        throws IOException, InterruptedException {
+    
+      Iterator<DoubleIntPairWritable> iter = errors.iterator();
+      
+      double sum = 0.0;
+      int count = 0;
+      
+      while (iter.hasNext()) {
+        DoubleIntPairWritable avgInfo = iter.next();
+        sum += avgInfo.getFirst().get() * avgInfo.getSecond().get();
+        count += avgInfo.getSecond().get();
+      }
+    
+      rmse.set(Math.sqrt(sum/count));
+      ctx.write(rmse, NullWritable.get());
+      
+    }
+  } 
 
-  private Path pathToUserRatingsByBlock() {
-    return getOutputPath("userRatingsByBlock");
+  private Path pathToUserRatingsByBlock(int userBlockId) {
+    return getOutputPath("userRatingsByBlock/" + Integer.toString(userBlockId));
   }
 }
