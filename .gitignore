@@ -18,3 +18,7 @@ core/temp
 temp
 foo
 math-tests/
+math/deviation.csv
+math/errors.csv
+math/sizes.csv
+core/src/test/java/atest
