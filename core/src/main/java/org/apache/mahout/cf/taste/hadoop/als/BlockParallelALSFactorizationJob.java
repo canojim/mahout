@@ -27,6 +27,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
@@ -184,6 +185,9 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		numUserBlocks = Integer.parseInt(getOption("numUserBlocks"));
 		numItemBlocks = Integer.parseInt(getOption("numItemBlocks"));
 
+		Configuration defaultConf = new Configuration();
+		FileSystem fs = FileSystem.get(defaultConf);
+		
 		/*
 		 * compute the factorization A = U M'
 		 * 
@@ -195,150 +199,166 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		boolean succeeded = false;
 		
 		if (usesLongIDs) {
-			Job mapUsers = prepareJob(getInputPath(),
-					getOutputPath("userIDIndex"), TextInputFormat.class,
-					MapLongIDsMapper.class, IntPairWritable.class,
-					VarLongWritable.class, IDMapReducer.class,
-					VarIntWritable.class, VarLongWritable.class,
-					SequenceFileOutputFormat.class);
-			mapUsers.getConfiguration().set(TOKEN_POS,
-					String.valueOf(TasteHadoopUtils.USER_ID_POS));
-			mapUsers.getConfiguration().setInt(NUM_BLOCKS,
-					numUserBlocks);
-			
-			
-			LazyOutputFormat.setOutputFormatClass(mapUsers, SequenceFileOutputFormat.class);
-			for (int blockId = 0; blockId < numUserBlocks; blockId++) {
-				MultipleOutputs.addNamedOutput(mapUsers, Integer.toString(blockId), SequenceFileOutputFormat.class, 
-						VarIntWritable.class, VarLongWritable.class);
-			}
-			
-			log.info("Starting Map LongID for user job");
-			succeeded = mapUsers.waitForCompletion(true);
-			if (!succeeded) {
-				throw new IllegalStateException("MapLoingID-User job failed!");
-			}
-			
-			Job mapItems = prepareJob(getInputPath(),
-					getOutputPath("itemIDIndex"), TextInputFormat.class,
-					MapLongIDsMapper.class, IntPairWritable.class,
-					VarLongWritable.class, IDMapReducer.class,
-					VarIntWritable.class, VarLongWritable.class,
-					SequenceFileOutputFormat.class);
-			mapItems.getConfiguration().set(TOKEN_POS,
-					String.valueOf(TasteHadoopUtils.ITEM_ID_POS));
-			mapItems.getConfiguration().setInt(NUM_BLOCKS,
-					numItemBlocks);
-
-			LazyOutputFormat.setOutputFormatClass(mapItems, SequenceFileOutputFormat.class);
-			for (int blockId = 0; blockId < numItemBlocks; blockId++) {
-				MultipleOutputs.addNamedOutput(mapItems, Integer.toString(blockId), SequenceFileOutputFormat.class, 
-						VarIntWritable.class, VarLongWritable.class);
+			if (!fs.exists(new Path(getOutputPath("userIDIndex").toString() + "/_SUCCESS"))) {
+				Job mapUsers = prepareJob(getInputPath(),
+						getOutputPath("userIDIndex"), TextInputFormat.class,
+						MapLongIDsMapper.class, IntPairWritable.class,
+						VarLongWritable.class, IDMapReducer.class,
+						VarIntWritable.class, VarLongWritable.class,
+						SequenceFileOutputFormat.class);
+				mapUsers.getConfiguration().set(TOKEN_POS,
+						String.valueOf(TasteHadoopUtils.USER_ID_POS));
+				mapUsers.getConfiguration().setInt(NUM_BLOCKS,
+						numUserBlocks);
+				mapUsers.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+				
+				LazyOutputFormat.setOutputFormatClass(mapUsers, SequenceFileOutputFormat.class);
+				for (int blockId = 0; blockId < numUserBlocks; blockId++) {
+					MultipleOutputs.addNamedOutput(mapUsers, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+							VarIntWritable.class, VarLongWritable.class);
+				}
+				
+				log.info("Starting Map LongID for user job");
+				succeeded = mapUsers.waitForCompletion(true);
+				if (!succeeded) {
+					throw new IllegalStateException("MapLoingID-User job failed!");
+				}
 			}			
-			
-			log.info("Starting Map LongID for item job");
-			
-			succeeded = mapItems.waitForCompletion(true);
-			
-			if (!succeeded) {
-				throw new IllegalStateException("MapLoingID-Item job failed!");
+			if (!fs.exists(new Path(getOutputPath("itemIDIndex").toString() + "/_SUCCESS"))) {
+				Job mapItems = prepareJob(getInputPath(),
+						getOutputPath("itemIDIndex"), TextInputFormat.class,
+						MapLongIDsMapper.class, IntPairWritable.class,
+						VarLongWritable.class, IDMapReducer.class,
+						VarIntWritable.class, VarLongWritable.class,
+						SequenceFileOutputFormat.class);
+				mapItems.getConfiguration().set(TOKEN_POS,
+						String.valueOf(TasteHadoopUtils.ITEM_ID_POS));
+				mapItems.getConfiguration().setInt(NUM_BLOCKS,
+						numItemBlocks);
+				mapItems.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+				
+				LazyOutputFormat.setOutputFormatClass(mapItems, SequenceFileOutputFormat.class);
+				for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+					MultipleOutputs.addNamedOutput(mapItems, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+							VarIntWritable.class, VarLongWritable.class);
+				}			
+				
+				log.info("Starting Map LongID for item job");
+				
+				succeeded = mapItems.waitForCompletion(true);
+				
+				if (!succeeded) {
+					throw new IllegalStateException("MapLoingID-Item job failed!");
+				}				
 			}
+
 		}
 		//input content: uID,mID,rating E.g. 21349098,444875844,2 21349098,1436281125,1 21349098,1856996949,1
 		//output filename: als/tmp/itemRatings/blockID-r-nnnnn E.g. 0-r-00000 1-r-00000
 		//output content: uID, Vector of mID:rating E.g. 21349098 {444875844:2.0,1436281125:1.0,1856996949:1.0}
 
+		if (!fs.exists(new Path(pathToItemRatings().toString() + "/_SUCCESS"))) {
+			/* create A' */
+			Job itemRatings = prepareJob(getInputPath(), pathToItemRatings(),
+					TextInputFormat.class, ItemRatingVectorsMapper.class,
+					IntPairWritable.class, VectorWritable.class,
+					VectorSumReducer.class, IntWritable.class,
+					VectorWritable.class, SequenceFileOutputFormat.class);
 
-		/* create A' */
-		Job itemRatings = prepareJob(getInputPath(), pathToItemRatings(),
-				TextInputFormat.class, ItemRatingVectorsMapper.class,
-				IntPairWritable.class, VectorWritable.class,
-				VectorSumReducer.class, IntWritable.class,
-				VectorWritable.class, SequenceFileOutputFormat.class);
+			// use multiple output to suport block
+			LazyOutputFormat.setOutputFormatClass(itemRatings, SequenceFileOutputFormat.class);
+		    for (int blockId = 0; blockId < numUserBlocks; blockId++) {
+		      MultipleOutputs.addNamedOutput(itemRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+		      																IntWritable.class, VectorWritable.class);
+		    }
 
-		// use multiple output to suport block
-		LazyOutputFormat.setOutputFormatClass(itemRatings, SequenceFileOutputFormat.class);
-	    for (int blockId = 0; blockId < numUserBlocks; blockId++) {
-	      MultipleOutputs.addNamedOutput(itemRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+			itemRatings.setCombinerClass(VectorSumCombiner.class);
+			itemRatings.getConfiguration().set(USES_LONG_IDS,
+					String.valueOf(usesLongIDs));
+			itemRatings.getConfiguration().setInt(NUM_BLOCKS,
+					numUserBlocks);
+			itemRatings.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+			
+			log.info("Starting item ratings job");
+			succeeded = itemRatings.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("Item ratings job failed!");
+			}			
+		}
+
+
+		if (!fs.exists(new Path(pathToUserRatings().toString() + "/_SUCCESS"))) {
+			//output file: /als/out/userRatings/0-r-00000
+			//output file content:
+
+			/* create A */
+			Job userRatings = prepareJob(pathToItemRatings(), pathToUserRatings(),
+					BlockTransposeMapper.class, IntPairWritable.class, VectorWritable.class,
+					MergeUserVectorsReducer.class, IntWritable.class,
+					VectorWritable.class);
+
+			// use multiple output to support block
+			LazyOutputFormat.setOutputFormatClass(userRatings, SequenceFileOutputFormat.class);
+			for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+				MultipleOutputs.addNamedOutput(userRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
 	      																IntWritable.class, VectorWritable.class);
-	    }
+			}
 
-		itemRatings.setCombinerClass(VectorSumCombiner.class);
-		itemRatings.getConfiguration().set(USES_LONG_IDS,
-				String.valueOf(usesLongIDs));
-		itemRatings.getConfiguration().setInt(NUM_BLOCKS,
-				numUserBlocks);
-
-		log.info("Starting item ratings job");
-		succeeded = itemRatings.waitForCompletion(true);
-		if (!succeeded) {
-			throw new IllegalStateException("Item ratings job failed!");
-		}
-				
-		//output file: /als/out/userRatings/0-r-00000
-		//output file content:
-
-		/* create A */
-		Job userRatings = prepareJob(pathToItemRatings(), pathToUserRatings(),
-				BlockTransposeMapper.class, IntPairWritable.class, VectorWritable.class,
-				MergeUserVectorsReducer.class, IntWritable.class,
-				VectorWritable.class);
-
-		// use multiple output to support block
-		LazyOutputFormat.setOutputFormatClass(userRatings, SequenceFileOutputFormat.class);
-		for (int blockId = 0; blockId < numItemBlocks; blockId++) {
-			MultipleOutputs.addNamedOutput(userRatings, Integer.toString(blockId), SequenceFileOutputFormat.class, 
-      																IntWritable.class, VectorWritable.class);
+			userRatings.setCombinerClass(MergeVectorsCombiner.class);
+			userRatings.getConfiguration().set(NUM_BLOCKS,
+					String.valueOf(numItemBlocks));
+			userRatings.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+			
+			log.info("Starting user ratings job");
+			succeeded = userRatings.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("User ratings job failed!");
+			}
 		}
 
-		userRatings.setCombinerClass(MergeVectorsCombiner.class);
-		userRatings.getConfiguration().set(NUM_BLOCKS,
-				String.valueOf(numItemBlocks));
-
-		log.info("Starting user ratings job");
-		succeeded = userRatings.waitForCompletion(true);
-		if (!succeeded) {
-			throw new IllegalStateException("User ratings job failed!");
+		if (!fs.exists(new Path(getTempPath("averageRatings").toString() + "/_SUCCESS"))) {
+			//als/tmp/averageRatings/part-r-00000
+			
+			Job averageItemRatings = prepareJob(pathToItemRatings(),
+					getTempPath("averageRatings"), AverageRatingMapper.class,
+					IntWritable.class, DoubleIntPairWritable.class,
+					AverageRatingReducer.class, IntWritable.class,
+					DoubleWritable.class);
+			averageItemRatings.setCombinerClass(AverageRatingCombiner.class);
+			averageItemRatings.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+			
+			log.info("Starting average rating job");
+			succeeded = averageItemRatings.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("Average rating job failed!");
+			}
 		}
-		
-		//als/tmp/averageRatings/part-r-00000
-		
-		Job averageItemRatings = prepareJob(pathToItemRatings(),
-				getTempPath("averageRatings"), AverageRatingMapper.class,
-				IntWritable.class, DoubleIntPairWritable.class,
-				AverageRatingReducer.class, IntWritable.class,
-				DoubleWritable.class);
-		averageItemRatings.setCombinerClass(AverageRatingCombiner.class);
-		
-		log.info("Starting average rating job");
-		succeeded = averageItemRatings.waitForCompletion(true);
-		if (!succeeded) {
-			throw new IllegalStateException("Average rating job failed!");
-		}
-
 
 		numItems = 0;
 		numUsers = 0;
-				
-		Job initializeMByBlock = prepareJob(getTempPath("averageRatings"),
-				pathToM(-1), SequenceFileInputFormat.class, InitializeMapper.class,
-				IntWritable.class, VectorWritable.class, SequenceFileOutputFormat.class);
 		
-		Configuration initializeMConf = initializeMByBlock.getConfiguration();
-		initializeMConf.setInt(NUM_BLOCKS, numItemBlocks);
-		initializeMConf.setInt(NUM_FEATURES, numFeatures);
+		if (!fs.exists(new Path(pathToM(-1).toString() + "/_SUCCESS"))) {
+			Job initializeMByBlock = prepareJob(getTempPath("averageRatings"),
+					pathToM(-1), SequenceFileInputFormat.class, InitializeMapper.class,
+					IntWritable.class, VectorWritable.class, SequenceFileOutputFormat.class);
+			
+			Configuration initializeMConf = initializeMByBlock.getConfiguration();
+			initializeMConf.setInt(NUM_BLOCKS, numItemBlocks);
+			initializeMConf.setInt(NUM_FEATURES, numFeatures);
+			initializeMConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+			
+			// use multiple output to support block
+			LazyOutputFormat.setOutputFormatClass(initializeMByBlock, SequenceFileOutputFormat.class);
+			for (int blockId = 0; blockId < numItemBlocks; blockId++) {
+				MultipleOutputs.addNamedOutput(initializeMByBlock, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+	      																IntWritable.class, VectorWritable.class);
+			}
 		
-		// use multiple output to support block
-		LazyOutputFormat.setOutputFormatClass(initializeMByBlock, SequenceFileOutputFormat.class);
-		for (int blockId = 0; blockId < numItemBlocks; blockId++) {
-			MultipleOutputs.addNamedOutput(initializeMByBlock, Integer.toString(blockId), SequenceFileOutputFormat.class, 
-      																IntWritable.class, VectorWritable.class);
-		}
-	
-		log.info("Starting initialize M-1 job");
-		succeeded = initializeMByBlock.waitForCompletion(true);
-		if (!succeeded) {
-			throw new IllegalStateException("initializeM-1 job failed!");
+			log.info("Starting initialize M-1 job");
+			succeeded = initializeMByBlock.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("initializeM-1 job failed!");
+			}			
 		}
 
 		for (int currentIteration = 0; currentIteration < numIterations; currentIteration++) {
@@ -348,16 +368,47 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			runSolver(pathToUserRatings(), pathToU(currentIteration),
 					pathToM(currentIteration - 1),
 					pathToPrefix("UYtY", currentIteration), currentIteration, "U",
-					numItems, numUserBlocks, numItemBlocks);
+					numItems, numUserBlocks, numItemBlocks, fs);
 			/* broadcast U, read A' row-wise, recompute M row-wise */
 			log.info("Recomputing M (iteration {}/{})", currentIteration,
 					numIterations);
 			runSolver(pathToItemRatings(), pathToM(currentIteration),
 					pathToU(currentIteration),
 					pathToPrefix("MYtY", currentIteration), currentIteration, "M",
-					numUsers, numUserBlocks, numItemBlocks);
+					numUsers, numUserBlocks, numItemBlocks, fs);
 		}
 
+		
+		if (!isSameChecksum(fs, new Path(getOutputPath("M").toString() + "/0-r-00000"), new Path(pathToM(numIterations - 1).toString() + "/0-r-00000"))) {
+			succeeded = fs.delete(getOutputPath("M"), true);
+			if (!succeeded) {
+				throw new IllegalStateException("cleanup old M data failed!");
+			}	
+
+			if (fs.exists(new Path(pathToM(numIterations - 1).toString() + "/_SUCCESS"))) {
+				log.info("Copy last iteration M data.");
+				succeeded = FileUtil.copy(fs, pathToM(numIterations - 1), fs, getOutputPath("M"), false, defaultConf);
+				if (!succeeded) {
+					throw new IllegalStateException("copy last iteration M job failed!");
+				}	
+			}
+		}					
+
+		if (!isSameChecksum(fs, new Path(getOutputPath("U").toString() + "/0-r-00000"), new Path(pathToU(numIterations - 1).toString() + "/0-r-00000"))) {
+			succeeded = fs.delete(getOutputPath("U"), true);
+			if (!succeeded) {
+				throw new IllegalStateException("cleanup old U data failed!");
+			}	
+
+			if (fs.exists(new Path(pathToU(numIterations - 1).toString() + "/_SUCCESS"))) {
+				log.info("Copy last iteration U data.");
+				succeeded = FileUtil.copy(fs, pathToU(numIterations - 1), fs, getOutputPath("U"), false, defaultConf);
+				if (!succeeded) {
+					throw new IllegalStateException("copy last iteration U job failed!");
+				}		
+			}
+		}			
+				
 		return 0;
 	}
 	
@@ -545,7 +596,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 	private void runSolver(Path ratings, Path output, Path pathToUorM,
 			Path pathToYty, int currentIteration, String matrixName,
-			int numEntities, int numBlocks1, int numBlocks2) throws ClassNotFoundException, IOException,
+			int numEntities, int numBlocks1, int numBlocks2, FileSystem fs) throws ClassNotFoundException, IOException,
 			InterruptedException {
 
 		// necessary for local execution in the same JVM only
@@ -567,25 +618,29 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		
 		boolean succeeded = false;
 		
-		// prepareJob to calculate Y'Y
-		Job calYtY = prepareJob(pathToUorM, pathToYty,
-				SequenceFileInputFormat.class, CalcYtYMapper.class,
-				MatrixEntryWritable.class, DoubleWritable.class,
-				CalcYtYReducer.class, NullWritable.class,
-				MatrixEntryWritable.class, SequenceFileOutputFormat.class);
+		if (!fs.exists(new Path(pathToYty.toString() + "/_SUCCESS"))) {
+			// prepareJob to calculate Y'Y
+			Job calYtY = prepareJob(pathToUorM, pathToYty,
+					SequenceFileInputFormat.class, CalcYtYMapper.class,
+					MatrixEntryWritable.class, DoubleWritable.class,
+					CalcYtYReducer.class, NullWritable.class,
+					MatrixEntryWritable.class, SequenceFileOutputFormat.class);
 
-		calYtY.setCombinerClass(CalcYtyCombiner.class);
+			calYtY.setCombinerClass(CalcYtyCombiner.class);
 
-		Configuration calYtYConf = calYtY.getConfiguration();
-		//System.out.println("numFeatures: " + numFeatures);
-		
-		calYtYConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
-
-		log.info("Starting YtY job");
-		succeeded = calYtY.waitForCompletion(true);
-		if (!succeeded) {
-			throw new IllegalStateException("calYtY Job failed!");
+			Configuration calYtYConf = calYtY.getConfiguration();
+			//System.out.println("numFeatures: " + numFeatures);
+			
+			calYtYConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
+			calYtYConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+			
+			log.info("Starting YtY job");
+			succeeded = calYtY.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("calYtY Job failed!");
+			}
 		}
+		
 
 		//JobControl control = new JobControl("BlockParallelALS");
 		JobManager jobMgr = new JobManager();
@@ -600,42 +655,46 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			
 			Path blockRatingsOutput = new Path(getTempPath(blockOutputName).toString() + "/" + Integer.toString(blockId));
 			Path blockFixUorM = new Path(pathToUorM.toString() + "/" + Integer.toString(blockId) + "-*-*");
-				
-			Job solveBlockUorI = prepareJob(blockRatings, blockRatingsOutput,
+			
+			if (!fs.exists(new Path(blockRatingsOutput.toString() + "/_SUCCESS"))) {
+				Job solveBlockUorI = prepareJob(blockRatings, blockRatingsOutput,
 						SequenceFileInputFormat.class,
 						MultithreadedSharingMapper.class, IntWritable.class,
 						ALSContributionWritable.class, SequenceFileOutputFormat.class, name + " blockId: " + blockId);
-			Configuration solverConf = solveBlockUorI.getConfiguration();
-			solverConf.set(LAMBDA, String.valueOf(lambda));
-			solverConf.set(ALPHA, String.valueOf(alpha));
-			solverConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
-			solverConf.set(NUM_ENTITIES, String.valueOf(0));
 
-			FileSystem fs = FileSystem.get(blockFixUorM.toUri(), solverConf);
-			
-			FileStatus[] parts = fs.globStatus(blockFixUorM);
-			
-			if (blockId == 0) {
-				log.info("Pushing " + parts.length + " files to distributed cache.");
-			}
-			
-			for (FileStatus part : parts) {
-				//System.out.println("Adding {} to distributed cache: " + part.getPath().toString());
-				if (log.isDebugEnabled()) {
-					log.debug("Adding {} to distributed cache", part.getPath()
-						.toString());
+				Configuration solverConf = solveBlockUorI.getConfiguration();
+				solverConf.set(LAMBDA, String.valueOf(lambda));
+				solverConf.set(ALPHA, String.valueOf(alpha));
+				solverConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
+				solverConf.set(NUM_ENTITIES, String.valueOf(0));
+	
+				//FileSystem fs = FileSystem.get(blockFixUorM.toUri(), solverConf);
+				
+				FileStatus[] parts = fs.globStatus(blockFixUorM);
+				
+				if (blockId == 0) {
+					log.info("Pushing " + parts.length + " files to distributed cache.");
 				}
-				DistributedCache.addCacheFile(part.getPath().toUri(), solverConf);
-			}
 				
-			MultithreadedMapper.setMapperClass(solveBlockUorI,
-						solverMapperClassInternal);
-			MultithreadedMapper.setNumberOfThreads(solveBlockUorI,
-						numThreadsPerSolver);
-				
-			//control.addJob(new ControlledJob(solverConf));
-			jobMgr.addJob(solveBlockUorI);
-		}
+				for (FileStatus part : parts) {
+					//System.out.println("Adding {} to distributed cache: " + part.getPath().toString());
+					if (log.isDebugEnabled()) {
+						log.debug("Adding {} to distributed cache", part.getPath()
+							.toString());
+					}
+					DistributedCache.addCacheFile(part.getPath().toUri(), solverConf);
+				}
+					
+				MultithreadedMapper.setMapperClass(solveBlockUorI,
+							solverMapperClassInternal);
+				MultithreadedMapper.setNumberOfThreads(solveBlockUorI,
+							numThreadsPerSolver);
+					
+				//control.addJob(new ControlledJob(solverConf));
+				jobMgr.addJob(solveBlockUorI);
+			} //if exist
+			
+		} // for
 
 		boolean allFinished = jobMgr.waitForCompletion();
 			
@@ -643,32 +702,34 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			throw new IllegalStateException("BlockParallelALS job failed.");
 		}
 		
-		log.info("Aggregating block result");
-		Path updateInputPath = new Path(getTempPath(blockOutputName).toString() + "/*/");
-		Job updateUorM = prepareJob(updateInputPath, output,
-				SequenceFileInputFormat.class, Mapper.class,
-				IntWritable.class, ALSContributionWritable.class,
-				UpdateUorMReducer.class, IntWritable.class,
-				VectorWritable.class, SequenceFileOutputFormat.class);
+		if (!fs.exists(new Path(output.toString() + "/_SUCCESS"))) {
+			log.info("Aggregating block result");
+			Path updateInputPath = new Path(getTempPath(blockOutputName).toString() + "/*/");
+			Job updateUorM = prepareJob(updateInputPath, output,
+					SequenceFileInputFormat.class, Mapper.class,
+					IntWritable.class, ALSContributionWritable.class,
+					UpdateUorMReducer.class, IntWritable.class,
+					VectorWritable.class, SequenceFileOutputFormat.class);
 
-		// use multiple output to suport block
-		LazyOutputFormat.setOutputFormatClass(updateUorM, SequenceFileOutputFormat.class);
-		for (int blockId = 0; blockId < numBlocks1; blockId++) {
-			MultipleOutputs.addNamedOutput(updateUorM, Integer.toString(blockId), SequenceFileOutputFormat.class, 
-      																IntWritable.class, VectorWritable.class);
+			// use multiple output to suport block
+			LazyOutputFormat.setOutputFormatClass(updateUorM, SequenceFileOutputFormat.class);
+			for (int blockId = 0; blockId < numBlocks1; blockId++) {
+				MultipleOutputs.addNamedOutput(updateUorM, Integer.toString(blockId), SequenceFileOutputFormat.class, 
+	      																IntWritable.class, VectorWritable.class);
+			}
+
+			updateUorM.setCombinerClass(UpdateUorMCombiner.class);
+			updateUorM.getConfiguration().setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
+			updateUorM.getConfiguration().set(NUM_BLOCKS,
+					String.valueOf(numBlocks1));
+			updateUorM.getConfiguration().set(PATH_TO_YTY, pathToYty.toString());
+			updateUorM.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+			
+			succeeded = updateUorM.waitForCompletion(true);
+			if (!succeeded) {
+				throw new IllegalStateException("updateUorM job failed!");
+			}
 		}
-
-		updateUorM.setCombinerClass(UpdateUorMCombiner.class);
-		updateUorM.getConfiguration().setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
-		updateUorM.getConfiguration().set(NUM_BLOCKS,
-				String.valueOf(numBlocks1));
-		updateUorM.getConfiguration().set(PATH_TO_YTY, pathToYty.toString());
-
-		succeeded = updateUorM.waitForCompletion(true);
-		if (!succeeded) {
-			throw new IllegalStateException("updateUorM job failed!");
-		}
-
 	}
 
 	static class AverageRatingMapper extends
@@ -798,18 +859,15 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	}
 
 	private Path pathToM(int iteration) {
-		return iteration == numIterations - 1 ? getOutputPath("M")
-				: getTempPath("M-" + iteration);
+		return getTempPath("M-" + iteration);
 	}
 
 	private Path pathToU(int iteration) {
-		return iteration == numIterations - 1 ? getOutputPath("U")
-				: getTempPath("U-" + iteration);
+		return getTempPath("U-" + iteration);
 	}
 
 	private Path pathToPrefix(String prefix, int iteration) {
-		return iteration == numIterations - 1 ? getOutputPath(prefix)
-				: getTempPath(prefix + iteration);
+		return getTempPath(prefix + iteration);
 	}
 
 	private Path pathToItemRatings() {
@@ -819,4 +877,22 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 	private Path pathToUserRatings() {
 		return getOutputPath("userRatings");
 	}
+	
+	private boolean isSameChecksum(FileSystem fs, Path f1, Path f2) {
+		try {
+			if (!fs.exists(f1) || !fs.exists(f2)) {
+				return false;
+			}
+			
+			String c1 = fs.getFileChecksum(f1).toString();
+			String c2 = fs.getFileChecksum(f2).toString();
+			log.info("Compare f1: " + f1 + " f2: " + f2 + " checksum1: " + c1 + " checksum2: " + c2);
+			
+			return c1.equals(c2);
+		} catch (IOException e) {
+			log.warn("isSame", e);
+			return false;
+		}
+	}
+	
 }
