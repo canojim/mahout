@@ -363,14 +363,14 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		for (int currentIteration = 0; currentIteration < numIterations; currentIteration++) {
 			/* broadcast M, read A row-wise, recompute U row-wise */
-			log.info("Recomputing U (iteration {}/{})", currentIteration,
+			log.info("Checking U (iteration {}/{})", currentIteration,
 					numIterations);
 			runSolver(pathToUserRatings(), pathToU(currentIteration),
 					pathToM(currentIteration - 1),
 					pathToPrefix("UYtY", currentIteration), currentIteration, "U",
 					numItems, numUserBlocks, numItemBlocks, fs);
 			/* broadcast U, read A' row-wise, recompute M row-wise */
-			log.info("Recomputing M (iteration {}/{})", currentIteration,
+			log.info("Checking M (iteration {}/{})", currentIteration,
 					numIterations);
 			runSolver(pathToItemRatings(), pathToM(currentIteration),
 					pathToU(currentIteration),
@@ -634,7 +634,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			calYtYConf.setInt(CalcYtYMapper.NUM_FEATURES, numFeatures);
 			calYtYConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
 			
-			log.info("Starting YtY job");
+			log.info("Starting YtY job. iteration: " + currentIteration);
 			succeeded = calYtY.waitForCompletion(true);
 			if (!succeeded) {
 				throw new IllegalStateException("calYtY Job failed!");
@@ -703,7 +703,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}
 		
 		if (!fs.exists(new Path(output.toString() + "/_SUCCESS"))) {
-			log.info("Aggregating block result");
+			log.info("Aggregating block result. iteration: " + currentIteration);
 			Path updateInputPath = new Path(getTempPath(blockOutputName).toString() + "/*/");
 			Job updateUorM = prepareJob(updateInputPath, output,
 					SequenceFileInputFormat.class, Mapper.class,
@@ -886,7 +886,7 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 			
 			String c1 = fs.getFileChecksum(f1).toString();
 			String c2 = fs.getFileChecksum(f2).toString();
-			log.info("Compare f1: " + f1 + " f2: " + f2 + " checksum1: " + c1 + " checksum2: " + c2);
+			//log.info("Compare f1: " + f1 + " f2: " + f2 + " checksum1: " + c1 + " checksum2: " + c2);
 			
 			return c1.equals(c2);
 		} catch (IOException e) {
