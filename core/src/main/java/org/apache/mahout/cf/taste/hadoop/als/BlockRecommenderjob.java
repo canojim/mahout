@@ -190,7 +190,7 @@ public class BlockRecommenderJob extends AbstractJob {
 
 		String userFeaturesPath = getOption("userFeatures");
 
-		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(new Path(rcmPath), userRatingsConf, usesLongIDs), numUserBlock);
+		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(rcmPath, userRatingsConf, usesLongIDs), numUserBlock);
 		
 		log.info("Required blocks: " + userBlocks.toString());
 		
@@ -267,7 +267,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			
 			Path blocksOutputPath = new Path(getTempPath().toString() + "/result/*/");
 			Job blockRecommendation = prepareJob(blocksOutputPath,
-					new Path(getOutputPath().toString() + "/recomd/"), SequenceFileInputFormat.class,
+					new Path(getOutputPath().toString() + "/recomd/" + userBlockId.toString()), SequenceFileInputFormat.class,
 					Mapper.class, LongWritable.class,
 					DoubleLongPairWritable.class, 
 					RecommendReducer.class,
@@ -281,12 +281,12 @@ public class BlockRecommenderJob extends AbstractJob {
 			blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
 
 			
-			log.info("Starting blockRecommendation (reduce) job");
+			log.info("Starting blockRecommendation (reduce) job. userBlockId: " + userBlockId.toString());
 			succeeded = blockRecommendation.waitForCompletion(true);
 			if (!succeeded) {
 				throw new IllegalStateException("blockRecommendation (reduce) job failed");
 			}
-		}
+		} //for 
 
 
 		return 0;
@@ -298,7 +298,6 @@ public class BlockRecommenderJob extends AbstractJob {
 		private MultipleOutputs<IntWritable, VectorWritable> out;
 		private int numUserBlocks;
 		private int numItemBlocks;
-		private Path rcmFilterPath;
 		private HashSet<Integer> rcmFilterSet = null;
 		private boolean usesLongIDs;
 		
@@ -317,8 +316,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			
 			String p = conf.get(BlockRecommenderJob.RECOMMEND_FILTER_PATH);
 			if (p != null) {
-				rcmFilterPath = new Path(p);
-				rcmFilterSet = loadFilterList(rcmFilterPath, conf, usesLongIDs);
+				rcmFilterSet = loadFilterList(p, conf, usesLongIDs);
 				Preconditions.checkState(rcmFilterSet.size() > 0, "Empty filter list. Check " + BlockRecommenderJob.RECOMMEND_FILTER_PATH);
 			}
 			
@@ -378,10 +376,17 @@ public class BlockRecommenderJob extends AbstractJob {
 	}
 	
 	// load recommendation filter list
-	private static HashSet<Integer> loadFilterList(Path location, Configuration conf, boolean usesLongIDs)
+	private static HashSet<Integer> loadFilterList(String locationStr, Configuration conf, boolean usesLongIDs)
 			throws IOException {
 
 		HashSet<Integer> s = new HashSet<Integer>();
+
+		if (locationStr == null) {
+			System.out.println("Filter path is null.");
+			return s;
+		}
+		
+		Path location = new Path(locationStr);		
 
 		FileSystem fileSystem = FileSystem.get(location.toUri(), conf);
 		CompressionCodecFactory factory = new CompressionCodecFactory(conf);

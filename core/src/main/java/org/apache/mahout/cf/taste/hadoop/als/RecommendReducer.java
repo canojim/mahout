@@ -14,8 +14,8 @@ import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritable, 
 		LongWritable, RecommendedItemsWritable> {
 
-	private TopItemsQueue topItemsQueue;
 	private int maxRating;
+	private int recommendationsPerUser;
 	
 	private final RecommendedItemsWritable recommendations = new RecommendedItemsWritable();
 	  
@@ -25,10 +25,8 @@ public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritab
 		
 		Configuration conf = context.getConfiguration();
 		
-		int recommendationsPerUser = conf.getInt(BlockRecommenderJob.NUM_RECOMMENDATIONS, 10);
-		maxRating = conf.getInt(BlockRecommenderJob.MAX_RATING, 100);
-		
-		topItemsQueue = new TopItemsQueue(recommendationsPerUser);
+		recommendationsPerUser = conf.getInt(BlockRecommenderJob.NUM_RECOMMENDATIONS, 10);
+		maxRating = conf.getInt(BlockRecommenderJob.MAX_RATING, 100);		
 	}
 
 	
@@ -37,6 +35,8 @@ public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritab
 			Iterable<DoubleLongPairWritable> values,
 			Context ctx) throws IOException, InterruptedException {
 
+		TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
+		
 		for (DoubleLongPairWritable i: values) {
 			double score = i.getFirst();
 			MutableRecommendedItem top = topItemsQueue.top();
