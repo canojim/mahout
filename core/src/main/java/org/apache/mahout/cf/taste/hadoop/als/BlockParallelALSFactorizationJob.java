@@ -380,10 +380,12 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 
 		
 		if (!isSameChecksum(fs, new Path(getOutputPath("M").toString() + "/0-r-00000"), new Path(pathToM(numIterations - 1).toString() + "/0-r-00000"))) {
-			succeeded = fs.delete(getOutputPath("M"), true);
-			if (!succeeded) {
-				throw new IllegalStateException("cleanup old M data failed!");
-			}	
+			if (fs.exists(getOutputPath("M"))) {
+				succeeded = fs.delete(getOutputPath("M"), true);
+				if (!succeeded) {
+					throw new IllegalStateException("cleanup old M data failed!");
+				}	
+			}						
 
 			if (fs.exists(new Path(pathToM(numIterations - 1).toString() + "/_SUCCESS"))) {
 				log.info("Copy last iteration M data.");
@@ -395,10 +397,12 @@ public class BlockParallelALSFactorizationJob extends AbstractJob {
 		}					
 
 		if (!isSameChecksum(fs, new Path(getOutputPath("U").toString() + "/0-r-00000"), new Path(pathToU(numIterations - 1).toString() + "/0-r-00000"))) {
-			succeeded = fs.delete(getOutputPath("U"), true);
-			if (!succeeded) {
-				throw new IllegalStateException("cleanup old U data failed!");
-			}	
+			if (fs.exists(getOutputPath("U"))) {
+				succeeded = fs.delete(getOutputPath("U"), true);
+				if (!succeeded) {
+					throw new IllegalStateException("cleanup old U data failed!");
+				}	
+			}
 
 			if (fs.exists(new Path(pathToU(numIterations - 1).toString() + "/_SUCCESS"))) {
 				log.info("Copy last iteration U data.");
