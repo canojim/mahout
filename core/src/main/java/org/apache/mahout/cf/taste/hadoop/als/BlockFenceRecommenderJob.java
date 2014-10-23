@@ -171,7 +171,7 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 				Job blockPrediction = prepareJob(sumAllUserFeaturePath,
 						blockOutputPath, SequenceFileInputFormat.class,
 						MultithreadedSharingMapper.class, LongWritable.class,
-						DoubleLongPairWritable.class, SequenceFileOutputFormat.class);
+						LongDoublePairWritable.class, SequenceFileOutputFormat.class);
 				
 				Configuration blockPredictionConf = blockPrediction
 						.getConfiguration();
@@ -216,7 +216,7 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 				blockRecommendation = prepareJob(blocksReduceInputPath,
 						blocksReduceOutputPath, SequenceFileInputFormat.class,
 						Mapper.class, LongWritable.class,
-						DoubleLongPairWritable.class, 
+						LongDoublePairWritable.class, 
 						RecommendCSVReducer.class,
 						LongWritable.class, Text.class, 
 						TextOutputFormat.class); 	
@@ -227,7 +227,7 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 				blockRecommendation = prepareJob(blocksReduceInputPath,
 					blocksReduceOutputPath, SequenceFileInputFormat.class,
 					Mapper.class, LongWritable.class,
-					DoubleLongPairWritable.class, 
+					LongDoublePairWritable.class, 
 					RecommendReducer.class,
 					LongWritable.class, RecommendedItemsWritable.class, 
 					TextOutputFormat.class);

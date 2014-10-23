@@ -11,7 +11,7 @@ import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
 import org.apache.mahout.cf.taste.hadoop.TopItemsQueue;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 
-public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritable, 
+public class RecommendReducer extends Reducer<LongWritable, LongDoublePairWritable, 
 		LongWritable, RecommendedItemsWritable> {
 
 	private int maxRating;
@@ -32,16 +32,16 @@ public class RecommendReducer extends Reducer<LongWritable, DoubleLongPairWritab
 	
 	@Override
 	protected void reduce(LongWritable userIDWritable,
-			Iterable<DoubleLongPairWritable> values,
+			Iterable<LongDoublePairWritable> values,
 			Context ctx) throws IOException, InterruptedException {
 
 		TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 		
-		for (DoubleLongPairWritable i: values) {
-			double score = i.getFirst();
+		for (LongDoublePairWritable i: values) {
+			double score = i.getSecond();
 			MutableRecommendedItem top = topItemsQueue.top();
 			if (score > top.getValue()) {
-				top.set(i.getSecond(), (float) score);
+				top.set(i.getFirst(), (float) score);
 	            topItemsQueue.updateTop();
 	        }
 		}

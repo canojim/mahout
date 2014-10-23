@@ -41,7 +41,7 @@ import org.apache.mahout.math.map.OpenIntObjectHashMap;
  */
 public class BlockFencePredictionMapper
 		extends
-		SharingMapper<IntWritable, VectorWritable, LongWritable, DoubleLongPairWritable, OpenIntObjectHashMap<Vector>> {
+		SharingMapper<IntWritable, VectorWritable, LongWritable, LongDoublePairWritable, OpenIntObjectHashMap<Vector>> {
 
 	private int recommendationsPerUser;
 
@@ -49,7 +49,7 @@ public class BlockFencePredictionMapper
 	private OpenIntLongHashMap itemIDIndex;
 
 	private final LongWritable userIDWritable = new LongWritable();
-	private final DoubleLongPairWritable scoreAndItemWritable = new DoubleLongPairWritable();
+	private final LongDoublePairWritable scoreAndItemWritable = new LongDoublePairWritable();
 	private final LongWritable itemidWritable = new LongWritable();
 	
 	private Path pathToBlockM;
@@ -131,7 +131,7 @@ public class BlockFencePredictionMapper
 	    
 	    for (RecommendedItem topItem : recommendedItems) {
 	    	//scoreWritable.set(topItem.getValue());
-	    	scoreAndItemWritable.setFirst(topItem.getValue());
+	    	scoreAndItemWritable.setFirst(itemidWritable.get());
 	    	
 	    	if (usesLongIDs) {
 	    		long itemID = itemIDIndex.get((int) topItem.getItemID());
@@ -139,7 +139,7 @@ public class BlockFencePredictionMapper
 	    	} else {
 	    		itemidWritable.set(topItem.getItemID());
 	    	}
-	    	scoreAndItemWritable.setSecond(itemidWritable.get());
+	    	scoreAndItemWritable.setSecond(topItem.getValue());
 	    		    	
 	    	ctx.write(userIDWritable, scoreAndItemWritable);
 	    }
