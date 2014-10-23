@@ -217,6 +217,23 @@ public final class VectorWritable extends Configured implements Writable {
     return accumulator;
   }
 
+  public static VectorWritable mergeSum(Iterator<VectorWritable> vectors) {
+	    return new VectorWritable(mergeSumToVector(vectors));
+	  }
+  
+  public static Vector mergeSumToVector(Iterator<VectorWritable> vectors) {
+	    Vector accumulator = vectors.next().get();
+	    while (vectors.hasNext()) {
+	      VectorWritable v = vectors.next();
+	      if (v != null) {
+	        for (Element nonZeroElement : v.get().nonZeroes()) {
+	          accumulator.incrementQuick(nonZeroElement.index(), nonZeroElement.get());
+	        }
+	      }
+	    }
+	    return accumulator;
+	  }  
+  
   @Override
   public boolean equals(Object o) {
     return o instanceof VectorWritable && vector.equals(((VectorWritable) o).get());
