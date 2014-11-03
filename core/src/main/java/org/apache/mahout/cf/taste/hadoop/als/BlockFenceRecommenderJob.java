@@ -161,7 +161,7 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 		for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
 	
 			Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
-					+ Integer.toString(itemBlockId) + "-r-*");
+					+ Integer.toString(itemBlockId) + "-*-*");
 			Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
 					+ Integer.toString(itemBlockId) + "-r-*");
 			Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
