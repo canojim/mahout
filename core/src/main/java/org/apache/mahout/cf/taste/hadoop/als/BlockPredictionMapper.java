@@ -54,7 +54,6 @@ public class BlockPredictionMapper
 
 	private final LongWritable userIDWritable = new LongWritable();
 	private final DoubleLongPairWritable scoreAndItemWritable = new DoubleLongPairWritable();
-	private final DoubleWritable scoreWritable = new DoubleWritable();
 	private final LongWritable itemidWritable = new LongWritable();
 	
 	private Path pathToBlockU;
@@ -128,52 +127,55 @@ public class BlockPredictionMapper
 
 	    final TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 	    final Vector userFeatures = U.get(userIndex);
-
-	    M.forEachPair(new IntObjectProcedure<Vector>() {
-	      @Override
-	      public boolean apply(int itemID, Vector itemFeatures) {
-	        if (!alreadyRatedItems.contains(itemID)) {
-	          double predictedRating = userFeatures.dot(itemFeatures);
-
-	          MutableRecommendedItem top = topItemsQueue.top();
-	          if (predictedRating > top.getValue()) {
-	            top.set(itemID, (float) predictedRating);
-	            topItemsQueue.updateTop();
-	          }
-	        }
-	        return true;
-	      }
-	    });
-
-	    if (usesLongIDs) {
-	        long userID = userIDIndex.get(userIndex);
-	        userIDWritable.set(userID);
+	    
+	    if (userFeatures == null) {
+	    	System.out.println("WARN: userFeatures for " + userIndex + " is null. OK if U is filtered.");
 	    } else {
-	    	userIDWritable.set(userIndex);
-	    }
-	    
-	    List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
-	    
-	    if (recommendedItems.size() == 0) {
-	    	System.out.println("WARN: recommendedItems.size() equals to zero.");
-	    }
-	    System.out.println("recommendedItems.size: " + recommendedItems.size());
-	    
-	    for (RecommendedItem topItem : recommendedItems) {
-	    	//scoreWritable.set(topItem.getValue());
-	    	scoreAndItemWritable.setFirst(topItem.getValue());
-	    	
-	    	if (usesLongIDs) {
-	    		long itemID = itemIDIndex.get((int) topItem.getItemID());
-	    		itemidWritable.set(itemID);
-	    	} else {
-	    		itemidWritable.set(topItem.getItemID());
-	    	}
-	    	scoreAndItemWritable.setSecond(itemidWritable.get());
-	    		    	
-	    	ctx.write(userIDWritable, scoreAndItemWritable);
-	    }
-	    
+		    M.forEachPair(new IntObjectProcedure<Vector>() {
+			      @Override
+			      public boolean apply(int itemID, Vector itemFeatures) {
+			        if (!alreadyRatedItems.contains(itemID)) {
+			          double predictedRating = userFeatures.dot(itemFeatures);
+
+			          MutableRecommendedItem top = topItemsQueue.top();
+			          if (predictedRating > top.getValue()) {
+			            top.set(itemID, (float) predictedRating);
+			            topItemsQueue.updateTop();
+			          }
+			        }
+			        return true;
+			      }
+			    });
+
+		    if (usesLongIDs) {
+		        long userID = userIDIndex.get(userIndex);
+		        userIDWritable.set(userID);
+		    } else {
+		    	userIDWritable.set(userIndex);
+		    }
+		    
+		    List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
+		    
+		    if (recommendedItems.size() == 0) {
+		    	System.out.println("WARN: recommendedItems.size() equals to zero.");
+		    }
+		    System.out.println("recommendedItems.size: " + recommendedItems.size());
+		    
+		    for (RecommendedItem topItem : recommendedItems) {
+		    	//scoreWritable.set(topItem.getValue());
+		    	scoreAndItemWritable.setFirst(topItem.getValue());
+		    	
+		    	if (usesLongIDs) {
+		    		long itemID = itemIDIndex.get((int) topItem.getItemID());
+		    		itemidWritable.set(itemID);
+		    	} else {
+		    		itemidWritable.set(topItem.getItemID());
+		    	}
+		    	scoreAndItemWritable.setSecond(itemidWritable.get());
+		    		    	
+		    	ctx.write(userIDWritable, scoreAndItemWritable);
+		    }
+	    }	    
 	}
 
 }
