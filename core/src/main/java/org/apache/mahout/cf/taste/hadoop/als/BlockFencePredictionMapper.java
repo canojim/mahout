@@ -105,15 +105,21 @@ public class BlockFencePredictionMapper
 	    final TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 	    final Vector userFeatures = userFeaturesWritable.get();	    
 
+	    System.out.println("M.size(): " + M.size());
 	    M.forEachPair(new IntObjectProcedure<Vector>() {
 	      @Override
 	      public boolean apply(int itemID, Vector itemFeatures) {
 	          double predictedRating = userFeatures.dot(itemFeatures);
 	
 	          MutableRecommendedItem top = topItemsQueue.top();
-	          if (predictedRating > top.getValue()) {
+	          
+	          float topValue = top.getValue();
+	          if (predictedRating > topValue) {
 	            top.set(itemID, (float) predictedRating);
 	            topItemsQueue.updateTop();
+	          } else {
+	        	System.out.println("itemID: " + itemID + " predictedRating: " + predictedRating + " < topValue: " + topValue);
+	        	//Value lower than Float.MIN_VALUE will not be considered.
 	          }
 
 	          return true;

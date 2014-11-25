@@ -57,6 +57,7 @@ public class RecommendCSVReducer extends Reducer<LongWritable, DoubleLongPairWri
 	    if (recommendedItems.size() == 0) {
 	    	System.out.println("WARN: recommendedItems.size() equals to zero.");
 	    }
+	    System.out.println("recommendedItems.size: " + recommendedItems.size());
 		
 	    if (!recommendedItems.isEmpty()) {
 
