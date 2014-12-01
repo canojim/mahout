@@ -38,10 +38,10 @@ public class RecommendReducer extends Reducer<LongWritable, LongDoublePairWritab
 		TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 		
 		for (LongDoublePairWritable i: values) {
-			double score = i.getSecond();
+			double score = i.getSecond().get();
 			MutableRecommendedItem top = topItemsQueue.top();
 			if (score > top.getValue()) {
-				top.set(i.getFirst(), (float) score);
+				top.set(i.getFirst().get(), (float) score);
 	            topItemsQueue.updateTop();
 	        }
 		}

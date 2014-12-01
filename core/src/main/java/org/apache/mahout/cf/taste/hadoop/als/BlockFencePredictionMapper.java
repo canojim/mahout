@@ -22,6 +22,7 @@ import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.mahout.cf.taste.hadoop.MutableRecommendedItem;
@@ -49,8 +50,9 @@ public class BlockFencePredictionMapper
 	private OpenIntLongHashMap itemIDIndex;
 
 	private final LongWritable userIDWritable = new LongWritable();
-	private final LongDoublePairWritable scoreAndItemWritable = new LongDoublePairWritable();
+	private final LongDoublePairWritable itemAndScoreWritable = new LongDoublePairWritable();
 	private final LongWritable itemidWritable = new LongWritable();
+	private final DoubleWritable scoreWritable = new DoubleWritable();
 	
 	private Path pathToBlockM;
 
@@ -137,7 +139,7 @@ public class BlockFencePredictionMapper
 	    
 	    for (RecommendedItem topItem : recommendedItems) {
 	    	//scoreWritable.set(topItem.getValue());
-	    	scoreAndItemWritable.setFirst(itemidWritable.get());
+	    	itemAndScoreWritable.setFirst(itemidWritable);
 	    	
 	    	if (usesLongIDs) {
 	    		long itemID = itemIDIndex.get((int) topItem.getItemID());
@@ -145,9 +147,10 @@ public class BlockFencePredictionMapper
 	    	} else {
 	    		itemidWritable.set(topItem.getItemID());
 	    	}
-	    	scoreAndItemWritable.setSecond(topItem.getValue());
+	    	scoreWritable.set(topItem.getValue());
+	    	itemAndScoreWritable.setSecond(scoreWritable);
 	    		    	
-	    	ctx.write(userIDWritable, scoreAndItemWritable);
+	    	ctx.write(userIDWritable, itemAndScoreWritable);
 	    }
 	    
 	}

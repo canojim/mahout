@@ -22,6 +22,7 @@ import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.mahout.cf.taste.hadoop.MutableRecommendedItem;
@@ -43,7 +44,7 @@ import org.apache.mahout.math.set.OpenIntHashSet;
  */
 public class BlockPredictionMapper
 		extends
-		SharingMapper<IntWritable, VectorWritable, LongWritable, DoubleLongPairWritable, Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>>> {
+		SharingMapper<IntWritable, VectorWritable, LongWritable, LongDoublePairWritable, Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>>> {
 
 	private int recommendationsPerUser;
 
@@ -52,8 +53,9 @@ public class BlockPredictionMapper
 	private OpenIntLongHashMap itemIDIndex;
 
 	private final LongWritable userIDWritable = new LongWritable();
-	private final DoubleLongPairWritable scoreAndItemWritable = new DoubleLongPairWritable();
+	private final LongDoublePairWritable itemAndScoreWritable = new LongDoublePairWritable();
 	private final LongWritable itemidWritable = new LongWritable();
+	private final DoubleWritable scoreWritable = new DoubleWritable();
 	
 	private Path pathToBlockU;
 	private Path pathToBlockM;
@@ -161,8 +163,8 @@ public class BlockPredictionMapper
 		    System.out.println("recommendedItems.size: " + recommendedItems.size());
 		    
 		    for (RecommendedItem topItem : recommendedItems) {
-		    	//scoreWritable.set(topItem.getValue());
-		    	scoreAndItemWritable.setFirst(topItem.getValue());
+		    	scoreWritable.set(topItem.getValue());
+		    	itemAndScoreWritable.setSecond(scoreWritable);
 		    	
 		    	if (usesLongIDs) {
 		    		long itemID = itemIDIndex.get((int) topItem.getItemID());
@@ -170,9 +172,9 @@ public class BlockPredictionMapper
 		    	} else {
 		    		itemidWritable.set(topItem.getItemID());
 		    	}
-		    	scoreAndItemWritable.setSecond(itemidWritable.get());
+		    	itemAndScoreWritable.setFirst(itemidWritable);
 		    		    	
-		    	ctx.write(userIDWritable, scoreAndItemWritable);
+		    	ctx.write(userIDWritable, itemAndScoreWritable);
 		    }
 	    }	    
 	}
