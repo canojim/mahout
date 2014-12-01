@@ -278,8 +278,8 @@ public class BlockRecommenderJob extends AbstractJob {
 				throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
 			}
 			
-			Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/*/");
-			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/recomd/" + userBlockId.toString());
+			Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/" + Integer.toString(blockId) + "x*/");
+			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/" + userBlockId.toString());
 			
 			if (!fs.exists(new Path(blocksReduceOutputPath.toString() + "/_SUCCESS"))) {
 				Job blockRecommendation = null;
@@ -388,7 +388,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	}
 
 	private Path pathToUserRatingsByUserBlock() {
-		return getOutputPath("userRatingsByUserBlock");
+		return new Path(getTempPath().toString() + "userRatingsByUserBlock");
 	}
 	
 	private static HashSet<Integer> getRequiredBlock(HashSet<Integer> filters, int numBlocks) {
