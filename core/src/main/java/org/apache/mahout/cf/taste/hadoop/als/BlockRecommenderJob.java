@@ -409,7 +409,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	}
 
 	private Path pathToUserRatingsByUserBlock() {
-		return new Path(getTempPath().toString() + "userRatingsByUserBlock");
+		return new Path(getTempPath().toString() + "/userRatingsByUserBlock");
 	}
 	
 	private static HashSet<Integer> getRequiredBlock(HashSet<Integer> filters, int numBlocks) {

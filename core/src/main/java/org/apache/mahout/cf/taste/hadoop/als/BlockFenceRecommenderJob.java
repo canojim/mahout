@@ -60,6 +60,7 @@ import org.slf4j.LoggerFactory;
  * <li>--numThreads (int): threads to use per mapper, (default: 1)</li>
  * </ol>
  */
+@Deprecated
 public class BlockFenceRecommenderJob extends AbstractJob {
 	
 	private static final Logger log = LoggerFactory
