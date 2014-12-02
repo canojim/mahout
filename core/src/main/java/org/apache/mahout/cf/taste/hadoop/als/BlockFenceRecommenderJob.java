@@ -116,7 +116,7 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 				String.valueOf(10));
 		addOption("numItemBlock", null, "number of item blocks",
 				String.valueOf(10));
-		addOption("outputFormat", null, "outputformat: csv or raw", FORMAT_CSV);
+		addOption("outputFormat", null, "outputformat: csv or raw", FORMAT_CSV);		
 		
 		addOutputOption();
 

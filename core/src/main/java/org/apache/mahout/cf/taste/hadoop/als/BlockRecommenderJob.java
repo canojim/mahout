@@ -126,12 +126,13 @@ public class BlockRecommenderJob extends AbstractJob {
 		addOption("recommendFilterPath", null,
 				"filter recommended user id. (optional)");
 		addOption("queueName", null,
-				"mapreduce queueName. (optional)", "default");		
+				"mapreduce queueName. (optional)", "default");	
 		addOption("numUserBlock", null, "number of user blocks",
 				String.valueOf(10));
 		addOption("numItemBlock", null, "number of item blocks",
 				String.valueOf(10));
 		addOption("outputFormat", null, "outputformat: csv or raw", FORMAT_CSV);
+		addOption("ringFence", null, "ringFence recommendation", "false");
 		
 		addOutputOption();
 
@@ -144,61 +145,69 @@ public class BlockRecommenderJob extends AbstractJob {
 		FileSystem fs = FileSystem.get(defaultConf);
 		
 		boolean succeeded = false;
+		boolean isRingFence = Boolean.parseBoolean(getOption("ringFence"));
+		
 		String rcmPath = getOption("recommendFilterPath");
 		boolean usesLongIDs = Boolean
 				.parseBoolean(getOption("usesLongIDs"));
 		
-		//
 		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
+		
+		if ((isRingFence) && (numUserBlock > 1)) {
+			throw new IllegalArgumentException("numUserBlock should be 1 for ringFence recommendation.");
+		}
+			
 		String outputFormat = getOption("outputFormat");
 		
-		if (!fs.exists(new Path(pathToUserRatingsByUserBlock().toString() + "/_SUCCESS"))) {
-			/* create block-wise user ratings */
-			Job userRatingsByUserBlock = prepareJob(getInputPath(),
-					pathToUserRatingsByUserBlock(), UserRatingsByUserBlockMapper.class,
-					IntWritable.class, VectorWritable.class,
-					Reducer.class, IntWritable.class,
-					VectorWritable.class);
+		if (!isRingFence) {
+			//Note: userRatingsByUserBlock not required by ringfence
+			if (!fs.exists(new Path(pathToUserRatingsByUserBlock().toString() + "/_SUCCESS"))) {
+				/* create block-wise user ratings */
+				Job userRatingsByUserBlock = prepareJob(getInputPath(),
+						pathToUserRatingsByUserBlock(), UserRatingsByUserBlockMapper.class,
+						IntWritable.class, VectorWritable.class,
+						Reducer.class, IntWritable.class,
+						VectorWritable.class);
 
-			// use multiple output to support block
-			LazyOutputFormat.setOutputFormatClass(userRatingsByUserBlock,
-					SequenceFileOutputFormat.class);
-			for (int userBlockId = 0; userBlockId < numUserBlock; userBlockId++) {
-				for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+				// use multiple output to support block
+				LazyOutputFormat.setOutputFormatClass(userRatingsByUserBlock,
+						SequenceFileOutputFormat.class);
+				for (int userBlockId = 0; userBlockId < numUserBlock; userBlockId++) {
+					for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
 
-						String outputName = Integer.toString(userBlockId) + "x" + 
-								Integer.toString(itemBlockId);
-						MultipleOutputs.addNamedOutput(userRatingsByUserBlock,
-								outputName, SequenceFileOutputFormat.class,
-								IntWritable.class, VectorWritable.class);
+							String outputName = Integer.toString(userBlockId) + "x" + 
+									Integer.toString(itemBlockId);
+							MultipleOutputs.addNamedOutput(userRatingsByUserBlock,
+									outputName, SequenceFileOutputFormat.class,
+									IntWritable.class, VectorWritable.class);
+					}
+				}
+
+				//userRatings.setCombinerClass(MergeVectorsCombiner.class);
+				Configuration userRatingsConf = userRatingsByUserBlock.getConfiguration();
+				
+				userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlock);
+				userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
+				userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+				
+				if (rcmPath != null)
+					userRatingsConf.set(RECOMMEND_FILTER_PATH, rcmPath);
+				
+
+				if (usesLongIDs) {
+					userRatingsConf.set(
+							ParallelALSFactorizationJob.USES_LONG_IDS,
+							String.valueOf(true));
+				}						
+				
+				log.info("Starting userRatingsByUserBlock job");
+				succeeded = userRatingsByUserBlock.waitForCompletion(true);
+				if (!succeeded) {
+					throw new IllegalStateException("userRatingsByUserBlock job failed");
 				}
 			}
-
-			//userRatings.setCombinerClass(MergeVectorsCombiner.class);
-			Configuration userRatingsConf = userRatingsByUserBlock.getConfiguration();
-			
-			userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlock);
-			userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
-			userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
-			
-			if (rcmPath != null)
-				userRatingsConf.set(RECOMMEND_FILTER_PATH, rcmPath);
-			
-
-			if (usesLongIDs) {
-				userRatingsConf.set(
-						ParallelALSFactorizationJob.USES_LONG_IDS,
-						String.valueOf(true));
-			}						
-			
-			log.info("Starting userRatingsByUserBlock job");
-			succeeded = userRatingsByUserBlock.waitForCompletion(true);
-			if (!succeeded) {
-				throw new IllegalStateException("userRatingsByUserBlock job failed");
-			}
 		}
-
 
 		String userFeaturesPath = getOption("userFeatures");
 		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(rcmPath, defaultConf, usesLongIDs), numUserBlock);
@@ -229,10 +238,25 @@ public class BlockRecommenderJob extends AbstractJob {
 						+ Integer.toString(blockId) + "x" + Integer.toString(itemBlockId));
 
 				if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
-					Job blockPrediction = prepareJob(blockUserRatingsPath,
+					Job blockPrediction = null;
+					if (!isRingFence) {
+						blockPrediction = prepareJob(blockUserRatingsPath,
 							blockOutputPath, SequenceFileInputFormat.class,
 							MultithreadedSharingMapper.class, LongWritable.class,
 							LongDoublePairWritable.class, SequenceFileOutputFormat.class);
+						
+						MultithreadedMapper.setMapperClass(blockPrediction,
+								BlockPredictionMapper.class);
+					} else {
+						//ringFence
+						blockPrediction = prepareJob(new Path(userFeaturesPath),
+								blockOutputPath, SequenceFileInputFormat.class,
+								MultithreadedSharingMapper.class, LongWritable.class,
+								LongDoublePairWritable.class, SequenceFileOutputFormat.class);
+						
+						MultithreadedMapper.setMapperClass(blockPrediction,
+								BlockFencePredictionMapper.class);
+					}
 					
 					Configuration blockPredictionConf = blockPrediction
 							.getConfiguration();
@@ -262,10 +286,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		
 					if (rcmPath != null)
 						blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
-		
-					MultithreadedMapper.setMapperClass(blockPrediction,
-							BlockPredictionMapper.class);
-
+					
 					MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
 		
 					jobMgr.addJob(blockPrediction);					
