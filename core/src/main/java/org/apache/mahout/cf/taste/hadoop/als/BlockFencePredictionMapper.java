@@ -62,7 +62,7 @@ public class BlockFencePredictionMapper
 
 		Configuration conf = ctx.getConfiguration();
 
-		pathToBlockM = new Path(conf.get(BlockFenceRecommenderJob.ITEM_FEATURES_PATH));
+		pathToBlockM = new Path(conf.get(BlockRecommenderJob.ITEM_FEATURES_PATH));
 		
 		OpenIntObjectHashMap<Vector> M = ALS.readMatrixByRowsGlob(pathToBlockM, conf);
 		
@@ -77,19 +77,19 @@ public class BlockFencePredictionMapper
 	protected void setup(Context ctx) throws IOException, InterruptedException {
 		Configuration conf = ctx.getConfiguration();
 		recommendationsPerUser = conf.getInt(
-				BlockFenceRecommenderJob.NUM_RECOMMENDATIONS,
-				BlockFenceRecommenderJob.DEFAULT_NUM_RECOMMENDATIONS);
+				BlockRecommenderJob.NUM_RECOMMENDATIONS,
+				BlockRecommenderJob.DEFAULT_NUM_RECOMMENDATIONS);
 
 		usesLongIDs = conf.getBoolean(
 				ParallelALSFactorizationJob.USES_LONG_IDS, false);
 
 		if (usesLongIDs) {
-			String itemIndexPath = conf.get(BlockFenceRecommenderJob.ITEM_INDEX_PATH);
+			String itemIndexPath = conf.get(BlockRecommenderJob.ITEM_INDEX_PATH);
 			
 			System.out.println("itemIndexPath: " + itemIndexPath);
 			
 			itemIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
-					conf.get(BlockFenceRecommenderJob.ITEM_INDEX_PATH), conf);
+					conf.get(BlockRecommenderJob.ITEM_INDEX_PATH), conf);
 			System.out.println("itemIDIndex.size(): " + itemIDIndex.size());
 		}
 		

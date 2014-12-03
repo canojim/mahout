@@ -65,26 +65,6 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 	
 	private static final Logger log = LoggerFactory
 			.getLogger(BlockParallelALSFactorizationJob.class);
-
-	static final String NUM_RECOMMENDATIONS = BlockFenceRecommenderJob.class
-			.getName() + ".numRecommendations";
-	static final String USER_FEATURES_PATH = BlockFenceRecommenderJob.class
-			.getName() + ".userFeatures";
-	static final String ITEM_FEATURES_PATH = BlockFenceRecommenderJob.class
-			.getName() + ".itemFeatures";
-	static final String MAX_RATING = BlockFenceRecommenderJob.class.getName()
-			+ ".maxRating";
-	static final String USER_INDEX_PATH = BlockFenceRecommenderJob.class.getName()
-			+ ".userIndex";
-	static final String ITEM_INDEX_PATH = BlockFenceRecommenderJob.class.getName()
-			+ ".itemIndex";
-	static final String RECOMMEND_FILTER_PATH = BlockFenceRecommenderJob.class
-			.getName() + ".recommendFilterPath";
-	static final String NUM_USER_BLOCK = BlockFenceRecommenderJob.class.getName()
-			+ ".numUserBlock";
-
-	static final String NUM_ITEM_BLOCK = BlockFenceRecommenderJob.class.getName()
-			+ ".numItemBlock";
 	
 	static final int DEFAULT_NUM_RECOMMENDATIONS = 10;	
 	static final String FORMAT_CSV = "csv";
@@ -177,18 +157,18 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 				Configuration blockPredictionConf = blockPrediction
 						.getConfiguration();
 				int numThreads = Integer.parseInt(getOption("numThreads"));
-				blockPredictionConf.set(ITEM_FEATURES_PATH,
+				blockPredictionConf.set(BlockRecommenderJob.ITEM_FEATURES_PATH,
 						blockItemFeaturesPath.toString());
 
-				blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
+				blockPredictionConf.setInt(BlockRecommenderJob.NUM_RECOMMENDATIONS,
 						Integer.parseInt(getOption("numRecommendations")));
-				blockPredictionConf.set(MAX_RATING, getOption("maxRating"));				
+				blockPredictionConf.set(BlockRecommenderJob.MAX_RATING, getOption("maxRating"));				
 				
 				if (usesLongIDs) {
 					blockPredictionConf.set(
 							ParallelALSFactorizationJob.USES_LONG_IDS,
 							String.valueOf(true));
-					blockPredictionConf.set(ITEM_INDEX_PATH,
+					blockPredictionConf.set(BlockRecommenderJob.ITEM_INDEX_PATH,
 							blockItemIDIndexPath.toString());
 				}
 	
