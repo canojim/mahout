@@ -55,6 +55,8 @@ public class TopItemsQueue extends PriorityQueue<MutableRecommendedItem> {
 
   @Override
   protected MutableRecommendedItem getSentinelObject() {
-    return new MutableRecommendedItem(SENTINEL_ID, Float.MIN_VALUE);
+    //return new MutableRecommendedItem(SENTINEL_ID, Float.MIN_VALUE);
+    return new MutableRecommendedItem(SENTINEL_ID, Float.NEGATIVE_INFINITY);
+    
   }
 }

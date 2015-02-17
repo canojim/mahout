@@ -233,7 +233,32 @@ public final class VectorWritable extends Configured implements Writable {
 	    }
 	    return accumulator;
 	  }  
-  
+
+  public static VectorWritable mergeAverage(Iterator<VectorWritable> vectors) {
+	    return new VectorWritable(mergeAverageToVector(vectors));
+	  }
+
+  public static Vector mergeAverageToVector(Iterator<VectorWritable> vectors) {
+	    Vector accumulator = vectors.next().get();
+	    
+	    long size = 0;
+	    while (vectors.hasNext()) {
+	      
+	      VectorWritable v = vectors.next();
+	      if (v != null) {
+	    	size++; 
+	        for (Element nonZeroElement : v.get().nonZeroes()) {	        	
+	          accumulator.incrementQuick(nonZeroElement.index(), nonZeroElement.get());
+	        }
+	      }
+	    }
+	    
+	    if (size > 0)
+	    	return accumulator.divide(size);
+	    else
+	    	return accumulator;
+	  }  
+
   @Override
   public boolean equals(Object o) {
     return o instanceof VectorWritable && vector.equals(((VectorWritable) o).get());

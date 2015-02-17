@@ -40,6 +40,7 @@ import org.apache.mahout.math.map.OpenIntObjectHashMap;
  * Afterwards it computes recommendations from these. Can be executed by a
  * {@link MultithreadedSharingMapper}.
  */
+@Deprecated
 public class BlockFencePredictionMapper
 		extends
 		SharingMapper<IntWritable, VectorWritable, LongWritable, LongDoublePairWritable, OpenIntObjectHashMap<Vector>> {

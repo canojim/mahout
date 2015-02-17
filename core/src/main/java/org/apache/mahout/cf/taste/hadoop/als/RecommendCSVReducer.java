@@ -44,14 +44,19 @@ public class RecommendCSVReducer extends Reducer<LongWritable, LongDoublePairWri
 
 		TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 		
+		int count = 0;
+		int count2 = 0;
 		for (LongDoublePairWritable i: values) {
 			double score = i.getSecond().get();
 			MutableRecommendedItem top = topItemsQueue.top();
 			if (score > top.getValue()) {
 				top.set(i.getFirst().get(), (float) score);
 	            topItemsQueue.updateTop();
+	            count2++;
 	        }
+			count++;
 		}
+		System.out.println("number of input rows: " + count + " added to queue :" + count2);
 
 		List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
 	    if (recommendedItems.size() == 0) {

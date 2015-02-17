@@ -50,6 +50,8 @@ import org.slf4j.LoggerFactory;
  */
 public class SumAllFeaturesJob extends AbstractJob {
 	
+	public static final String OUTPUT_SHORT_ID = "outputShortId";
+	
 	private static final Logger log = LoggerFactory
 			.getLogger(BlockParallelALSFactorizationJob.class);
 	
@@ -63,6 +65,8 @@ public class SumAllFeaturesJob extends AbstractJob {
 		addInputOption();
 		addOption("queueName", null,
 				"mapreduce queueName. (optional)", "default");		
+		addOption(OUTPUT_SHORT_ID, null,
+				"short id for ringfence. (optional)", "-1");
 		
 		addOutputOption();
 
@@ -86,7 +90,12 @@ public class SumAllFeaturesJob extends AbstractJob {
 					VectorSumReducer.class, IntWritable.class,
 					VectorWritable.class);
 			
+			int shortId = Integer.parseInt(getOption(OUTPUT_SHORT_ID));
+			if (shortId > 0)
+				shortId = -shortId;
+			
 			sumAllUserFeature.getConfiguration().set(JobManager.QUEUE_NAME, getOption("queueName"));
+			sumAllUserFeature.getConfiguration().setInt(OUTPUT_SHORT_ID, shortId);
 			
 			log.info("Starting sumAllUserFeature job.");
 			succeeded = sumAllUserFeature.waitForCompletion(true);
@@ -120,9 +129,12 @@ public class SumAllFeaturesJob extends AbstractJob {
 				Context ctx)
 				throws IOException, InterruptedException {
 			
-			VectorWritable vw = VectorWritable.mergeSum(features.iterator());			
+			VectorWritable vw = VectorWritable.mergeAverage(features.iterator());			
 			
-			ctx.write(key, vw);
+			int k = ctx.getConfiguration().getInt(OUTPUT_SHORT_ID, -1); 
+			IntWritable reduceOutKey = new IntWritable(k);
+			
+			ctx.write(reduceOutKey, vw);
 		}
 				
 	}

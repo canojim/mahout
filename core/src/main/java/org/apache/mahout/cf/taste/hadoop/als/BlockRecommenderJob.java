@@ -145,7 +145,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		FileSystem fs = FileSystem.get(defaultConf);
 		
 		boolean succeeded = false;
-		boolean isRingFence = Boolean.parseBoolean(getOption("ringFence"));
+		//boolean isRingFence = Boolean.parseBoolean(getOption("ringFence"));
 		
 		String rcmPath = getOption("recommendFilterPath");
 		boolean usesLongIDs = Boolean
@@ -154,14 +154,13 @@ public class BlockRecommenderJob extends AbstractJob {
 		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
 		
-		if ((isRingFence) && (numUserBlock > 1)) {
+		/*if ((isRingFence) && (numUserBlock > 1)) {
 			throw new IllegalArgumentException("numUserBlock should be 1 for ringFence recommendation.");
-		}
+		}*/
 			
 		String outputFormat = getOption("outputFormat");
 		
-		if (!isRingFence) {
-			//Note: userRatingsByUserBlock not required by ringfence
+		//if (!isRingFence) {
 			if (!fs.exists(new Path(pathToUserRatingsByUserBlock().toString() + "/_SUCCESS"))) {
 				/* create block-wise user ratings */
 				Job userRatingsByUserBlock = prepareJob(getInputPath(),
@@ -207,7 +206,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					throw new IllegalStateException("userRatingsByUserBlock job failed");
 				}
 			}
-		}
+		//} if !ringFence
 
 		String userFeaturesPath = getOption("userFeatures");
 		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(rcmPath, defaultConf, usesLongIDs), numUserBlock);
@@ -239,7 +238,7 @@ public class BlockRecommenderJob extends AbstractJob {
 
 				if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
 					Job blockPrediction = null;
-					if (!isRingFence) {
+					//if (!isRingFence) {
 						blockPrediction = prepareJob(blockUserRatingsPath,
 							blockOutputPath, SequenceFileInputFormat.class,
 							MultithreadedSharingMapper.class, LongWritable.class,
@@ -247,7 +246,7 @@ public class BlockRecommenderJob extends AbstractJob {
 						
 						MultithreadedMapper.setMapperClass(blockPrediction,
 								BlockPredictionMapper.class);
-					} else {
+					/*} else {
 						//ringFence
 						blockPrediction = prepareJob(new Path(userFeaturesPath),
 								blockOutputPath, SequenceFileInputFormat.class,
@@ -256,7 +255,7 @@ public class BlockRecommenderJob extends AbstractJob {
 						
 						MultithreadedMapper.setMapperClass(blockPrediction,
 								BlockFencePredictionMapper.class);
-					}
+					}*/
 					
 					Configuration blockPredictionConf = blockPrediction
 							.getConfiguration();

@@ -148,7 +148,7 @@ public class BlockPredictionMapper
 			      }
 			    });
 
-		    if (usesLongIDs) {
+		    if (usesLongIDs && userIndex > 0) {
 		        long userID = userIDIndex.get(userIndex);
 		        userIDWritable.set(userID);
 		    } else {
@@ -166,8 +166,9 @@ public class BlockPredictionMapper
 		    	scoreWritable.set(topItem.getValue());
 		    	itemAndScoreWritable.setSecond(scoreWritable);
 		    	
-		    	if (usesLongIDs) {
-		    		long itemID = itemIDIndex.get((int) topItem.getItemID());
+		    	int itemIndex = (int) topItem.getItemID();
+		    	if (usesLongIDs && itemIndex > 0) {
+		    		long itemID = itemIDIndex.get(itemIndex);
 		    		itemidWritable.set(itemID);
 		    	} else {
 		    		itemidWritable.set(topItem.getItemID());
