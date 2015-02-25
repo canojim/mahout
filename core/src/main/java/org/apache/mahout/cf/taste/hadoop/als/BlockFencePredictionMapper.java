@@ -40,7 +40,7 @@ import org.apache.mahout.math.map.OpenIntObjectHashMap;
  * Afterwards it computes recommendations from these. Can be executed by a
  * {@link MultithreadedSharingMapper}.
  */
-@Deprecated
+
 public class BlockFencePredictionMapper
 		extends
 		SharingMapper<IntWritable, VectorWritable, LongWritable, LongDoublePairWritable, OpenIntObjectHashMap<Vector>> {
@@ -48,6 +48,7 @@ public class BlockFencePredictionMapper
 	private int recommendationsPerUser;
 
 	private boolean usesLongIDs;
+	private OpenIntLongHashMap userIDIndex;
 	private OpenIntLongHashMap itemIDIndex;
 
 	private final LongWritable userIDWritable = new LongWritable();
@@ -85,13 +86,18 @@ public class BlockFencePredictionMapper
 				ParallelALSFactorizationJob.USES_LONG_IDS, false);
 
 		if (usesLongIDs) {
+			
+			String userIndexPath = conf.get(BlockRecommenderJob.USER_INDEX_PATH);
 			String itemIndexPath = conf.get(BlockRecommenderJob.ITEM_INDEX_PATH);
 			
+			System.out.println("userIndexPath: " + userIndexPath);
 			System.out.println("itemIndexPath: " + itemIndexPath);
 			
+			userIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
+					conf.get(BlockRecommenderJob.USER_INDEX_PATH), conf);
 			itemIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
 					conf.get(BlockRecommenderJob.ITEM_INDEX_PATH), conf);
-			System.out.println("itemIDIndex.size(): " + itemIDIndex.size());
+			System.out.println("userIDIndex.size: " + userIDIndex.size() + " itemIDIndex.size(): " + itemIDIndex.size());
 		}
 		
 	}
@@ -108,7 +114,7 @@ public class BlockFencePredictionMapper
 	    final TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 	    final Vector userFeatures = userFeaturesWritable.get();	    
 
-	    System.out.println("M.size(): " + M.size());
+	    //System.out.println("M.size(): " + M.size());
 	    M.forEachPair(new IntObjectProcedure<Vector>() {
 	      @Override
 	      public boolean apply(int itemID, Vector itemFeatures) {
@@ -121,15 +127,20 @@ public class BlockFencePredictionMapper
 	            top.set(itemID, (float) predictedRating);
 	            topItemsQueue.updateTop();
 	          } else {
-	        	System.out.println("itemID: " + itemID + " predictedRating: " + predictedRating + " < topValue: " + topValue);
-	        	//Value lower than Float.MIN_VALUE will not be considered.
+	        	//System.out.println("itemID: " + itemID + " predictedRating: " + predictedRating + " < topValue: " + topValue);
+	        	//Value lower than Float.NEGATIVE_INFINITY will not be considered.
 	          }
 
 	          return true;
 	      }
 	    });
-
-	    userIDWritable.set(userIndex);
+	    
+	    if (usesLongIDs && userIndex > 0) {
+	        long userID = userIDIndex.get(userIndex);
+	        userIDWritable.set(userID);
+	    } else {
+	    	userIDWritable.set(userIndex);
+	    }
 	    
 	    List<RecommendedItem> recommendedItems = topItemsQueue.getTopItems();
 	    
@@ -142,8 +153,9 @@ public class BlockFencePredictionMapper
 	    	//scoreWritable.set(topItem.getValue());
 	    	itemAndScoreWritable.setFirst(itemidWritable);
 	    	
-	    	if (usesLongIDs) {
-	    		long itemID = itemIDIndex.get((int) topItem.getItemID());
+	    	int itemIndex = (int) topItem.getItemID();
+	    	if (usesLongIDs && itemIndex > 0) {
+	    		long itemID = itemIDIndex.get(itemIndex);
 	    		itemidWritable.set(itemID);
 	    	} else {
 	    		itemidWritable.set(topItem.getItemID());

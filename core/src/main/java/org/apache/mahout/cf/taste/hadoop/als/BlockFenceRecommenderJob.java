@@ -17,19 +17,16 @@
 
 package org.apache.mahout.cf.taste.hadoop.als;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.map.MultithreadedMapper;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
@@ -37,7 +34,6 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.mahout.cf.taste.hadoop.RecommendedItemsWritable;
 import org.apache.mahout.common.AbstractJob;
-import org.apache.mahout.math.VectorWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,7 +56,6 @@ import org.slf4j.LoggerFactory;
  * <li>--numThreads (int): threads to use per mapper, (default: 1)</li>
  * </ol>
  */
-@Deprecated
 public class BlockFenceRecommenderJob extends AbstractJob {
 	
 	private static final Logger log = LoggerFactory
@@ -114,151 +109,119 @@ public class BlockFenceRecommenderJob extends AbstractJob {
 		boolean usesLongIDs = Boolean
 				.parseBoolean(getOption("usesLongIDs"));
 		
-		// int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
+		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
-		String outputFormat = getOption("outputFormat");
 		
-		Path allUserFeaturesPath = getInputPath(); 		
-		Path sumAllUserFeaturePath = new Path(getTempPath().toString() + "/sumAllUserFeature");
-		int blockId = 0;
-		
-		if (!fs.exists(new Path(sumAllUserFeaturePath.toString() + "/_SUCCESS"))) {
-			Job sumAllUserFeature = prepareJob(allUserFeaturesPath,
-					sumAllUserFeaturePath, VectorSumMapper.class,
-					IntWritable.class, VectorWritable.class,
-					VectorSumReducer.class, IntWritable.class,
-					VectorWritable.class);
-			
-			log.info("Starting sumAllUserFeature job.");
-			succeeded = sumAllUserFeature.waitForCompletion(true);
-			if (!succeeded) {
-				throw new IllegalStateException("sumAllUserFeature job failed");
-			}				
-		}		
+		String outputFormat = getOption("outputFormat");		
 		
 		JobManager jobMgr = new JobManager();
 		jobMgr.setQueueName(getOption("queueName"));
 		
-		for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+		for (int userBlockId=0; userBlockId < numUserBlock; userBlockId++) {
+			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
+				
+				Path blockInputPath = new Path(getInputPath() + "/" + userBlockId + "-*-*"); //userFeatures
+				
+				Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
+						+ Integer.toString(itemBlockId) + "-*-*");
+				
+				Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
+						+ Integer.toString(userBlockId) + "-r-*");
+				Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
+						+ Integer.toString(itemBlockId) + "-r-*");
+				Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
+						+ Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId));
 	
-			Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
-					+ Integer.toString(itemBlockId) + "-*-*");
-			Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
-					+ Integer.toString(itemBlockId) + "-r-*");
-			Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
-					+ Integer.toString(blockId) + "x" + Integer.toString(itemBlockId));
-
-			if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
-				Job blockPrediction = prepareJob(sumAllUserFeaturePath,
-						blockOutputPath, SequenceFileInputFormat.class,
-						MultithreadedSharingMapper.class, LongWritable.class,
-						LongDoublePairWritable.class, SequenceFileOutputFormat.class);
-				
-				Configuration blockPredictionConf = blockPrediction
-						.getConfiguration();
-				int numThreads = Integer.parseInt(getOption("numThreads"));
-				blockPredictionConf.set(BlockRecommenderJob.ITEM_FEATURES_PATH,
-						blockItemFeaturesPath.toString());
-
-				blockPredictionConf.setInt(BlockRecommenderJob.NUM_RECOMMENDATIONS,
-						Integer.parseInt(getOption("numRecommendations")));
-				blockPredictionConf.set(BlockRecommenderJob.MAX_RATING, getOption("maxRating"));				
-				
-				if (usesLongIDs) {
-					blockPredictionConf.set(
-							ParallelALSFactorizationJob.USES_LONG_IDS,
-							String.valueOf(true));
-					blockPredictionConf.set(BlockRecommenderJob.ITEM_INDEX_PATH,
-							blockItemIDIndexPath.toString());
+				if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
+					Job blockPrediction = prepareJob(blockInputPath,
+							blockOutputPath, SequenceFileInputFormat.class,
+							MultithreadedSharingMapper.class, LongWritable.class,
+							LongDoublePairWritable.class, SequenceFileOutputFormat.class);
+					
+					blockPrediction.setJobName("blockPrediction userblockId=" + userBlockId + " itemBlockId=" + itemBlockId);
+					
+					Configuration blockPredictionConf = blockPrediction
+							.getConfiguration();
+					int numThreads = Integer.parseInt(getOption("numThreads"));
+					blockPredictionConf.set(BlockRecommenderJob.ITEM_FEATURES_PATH,
+							blockItemFeaturesPath.toString());
+					
+					blockPredictionConf.setInt(BlockRecommenderJob.NUM_RECOMMENDATIONS,
+							Integer.parseInt(getOption("numRecommendations")));
+					blockPredictionConf.set(BlockRecommenderJob.MAX_RATING, getOption("maxRating"));				
+					
+					if (usesLongIDs) {
+						blockPredictionConf.set(
+								ParallelALSFactorizationJob.USES_LONG_IDS,
+								String.valueOf(true));
+						blockPredictionConf.set(BlockRecommenderJob.ITEM_INDEX_PATH,
+								blockItemIDIndexPath.toString());
+						blockPredictionConf.set(BlockRecommenderJob.USER_INDEX_PATH,
+								blockUserIDIndexPath.toString());
+					}
+		
+					MultithreadedMapper.setMapperClass(blockPrediction,
+							BlockFencePredictionMapper.class);
+	
+					MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
+		
+					jobMgr.addJob(blockPrediction);					
 				}
-	
-				MultithreadedMapper.setMapperClass(blockPrediction,
-						BlockFencePredictionMapper.class);
-
-				MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
-	
-				jobMgr.addJob(blockPrediction);					
+			} // for itemBlock
+		
+		
+			boolean allFinished = jobMgr.waitForCompletion();
+			
+			if (!allFinished) {
+				throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
 			}
-		}
-		
-		boolean allFinished = jobMgr.waitForCompletion();
-		
-		if (!allFinished) {
-			throw new IllegalStateException("Some BlockPredictionMapper jobs failed.");
-		}
-		
-		Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/*/");
-		Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/recomd/");
-		
-		if (!fs.exists(new Path(blocksReduceOutputPath.toString() + "/_SUCCESS"))) {
-			Job blockRecommendation = null;
-			Configuration blockRecommendationConf = null;
-			if (FORMAT_CSV.equals(outputFormat)) {
-				blockRecommendation = prepareJob(blocksReduceInputPath,
+			
+			Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/" + Integer.toString(userBlockId) + "x*/");
+			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/" + Integer.toString(userBlockId));
+			
+			if (!fs.exists(new Path(blocksReduceOutputPath.toString() + "/_SUCCESS"))) {
+				Job blockRecommendation = null;
+				Configuration blockRecommendationConf = null;
+				if (FORMAT_CSV.equals(outputFormat)) {
+					blockRecommendation = prepareJob(blocksReduceInputPath,
+							blocksReduceOutputPath, SequenceFileInputFormat.class,
+							Mapper.class, LongWritable.class,
+							LongDoublePairWritable.class, 
+							RecommendCSVReducer.class,
+							LongWritable.class, Text.class, 
+							TextOutputFormat.class); 	
+					
+					blockRecommendation.setJobName("blockRecommendation userblockId=" + userBlockId);
+					
+					blockRecommendationConf = blockRecommendation.getConfiguration();
+					blockRecommendationConf.set("mapred.textoutputformat.separator", ",");
+				} else {
+					blockRecommendation = prepareJob(blocksReduceInputPath,
 						blocksReduceOutputPath, SequenceFileInputFormat.class,
 						Mapper.class, LongWritable.class,
 						LongDoublePairWritable.class, 
-						RecommendCSVReducer.class,
-						LongWritable.class, Text.class, 
-						TextOutputFormat.class); 	
+						RecommendReducer.class,
+						LongWritable.class, RecommendedItemsWritable.class, 
+						TextOutputFormat.class);
+					
+					blockRecommendationConf = blockRecommendation.getConfiguration();
+				}
 				
-				blockRecommendationConf = blockRecommendation.getConfiguration();
-				blockRecommendationConf.set("mapred.textoutputformat.separator", ",");
-			} else {
-				blockRecommendation = prepareJob(blocksReduceInputPath,
-					blocksReduceOutputPath, SequenceFileInputFormat.class,
-					Mapper.class, LongWritable.class,
-					LongDoublePairWritable.class, 
-					RecommendReducer.class,
-					LongWritable.class, RecommendedItemsWritable.class, 
-					TextOutputFormat.class);
+				blockRecommendationConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+				blockRecommendationConf.setInt(BlockRecommenderJob.NUM_RECOMMENDATIONS,
+						Integer.parseInt(getOption("numRecommendations")));
+				blockRecommendationConf.setInt(BlockRecommenderJob.MAX_RATING, Integer.parseInt(getOption("maxRating")));
+	
 				
-				blockRecommendationConf = blockRecommendation.getConfiguration();
-			}
-			
-			blockRecommendationConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
-			blockRecommendationConf.setInt(BlockRecommenderJob.NUM_RECOMMENDATIONS,
-					Integer.parseInt(getOption("numRecommendations")));
-			blockRecommendationConf.setInt(BlockRecommenderJob.MAX_RATING, Integer.parseInt(getOption("maxRating")));
-
-			
-			log.info("Starting blockRecommendation (reduce) job.");
-			succeeded = blockRecommendation.waitForCompletion(true);
-			if (!succeeded) {
-				throw new IllegalStateException("blockRecommendation (reduce) job failed");
-			}
-		}			
+				log.info("Starting blockRecommendation (reduce) job.");
+				succeeded = blockRecommendation.waitForCompletion(true);
+				if (!succeeded) {
+					throw new IllegalStateException("blockRecommendation (reduce) job failed");
+				}
+			}	
+		} // for userBlock
 		
 		return 0;
-	}
-
-	static class VectorSumMapper extends
-			Mapper<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-
-		final IntWritable outKey = new IntWritable(1);
-		
-		@Override
-		protected void map(IntWritable key, VectorWritable value,
-				Context context)
-				throws IOException, InterruptedException {
-			context.write(outKey, value);
-		}
-				
-	}
-			
-	static class VectorSumReducer extends
-			Reducer<IntWritable, VectorWritable, IntWritable, VectorWritable> {
-
-		@Override
-		protected void reduce(IntWritable key, Iterable<VectorWritable> features,
-				Context ctx)
-				throws IOException, InterruptedException {
-			
-			VectorWritable vw = VectorWritable.mergeSum(features.iterator());			
-			
-			ctx.write(key, vw);
-		}
-				
 	}
 			
 }

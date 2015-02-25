@@ -244,6 +244,8 @@ public class BlockRecommenderJob extends AbstractJob {
 							MultithreadedSharingMapper.class, LongWritable.class,
 							LongDoublePairWritable.class, SequenceFileOutputFormat.class);
 						
+						blockPrediction.setJobName("blockPrediction userblockId=" + blockId + " itemBlockId=" + itemBlockId);
+						
 						MultithreadedMapper.setMapperClass(blockPrediction,
 								BlockPredictionMapper.class);
 					/*} else {
@@ -312,7 +314,7 @@ public class BlockRecommenderJob extends AbstractJob {
 							RecommendCSVReducer.class,
 							LongWritable.class, Text.class, 
 							TextOutputFormat.class); 	
-					
+					blockRecommendation.setJobName("blockRecommendation userblockId=" + blockId);					
 					blockRecommendationConf = blockRecommendation.getConfiguration();
 					blockRecommendationConf.set("mapred.textoutputformat.separator", ",");
 				} else {
