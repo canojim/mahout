@@ -59,7 +59,8 @@ public class BlockPredictionMapper
 	
 	private Path pathToBlockU;
 	private Path pathToBlockM;
-
+	private boolean recommendAlreadyRated = false;
+	
 
 	@Override
 	Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>> createSharedInstance(Context ctx) {
@@ -90,6 +91,8 @@ public class BlockPredictionMapper
 		usesLongIDs = conf.getBoolean(
 				ParallelALSFactorizationJob.USES_LONG_IDS, false);
 
+		recommendAlreadyRated = conf.getBoolean(BlockRecommenderJob.RECOMMEND_ALREADY_RATED, false);
+		
 		if (usesLongIDs) {
 			String userIndexPath = conf.get(BlockRecommenderJob.USER_INDEX_PATH);
 			String itemIndexPath = conf.get(BlockRecommenderJob.ITEM_INDEX_PATH);
@@ -122,22 +125,28 @@ public class BlockPredictionMapper
 
 	    final OpenIntHashSet alreadyRatedItems = new OpenIntHashSet(ratings.getNumNondefaultElements());
 
-	    for (Vector.Element e : ratings.nonZeroes()) {
-	      alreadyRatedItems.add(e.index());
+	    if (!recommendAlreadyRated) {
+		    for (Vector.Element e : ratings.nonZeroes()) {
+			      alreadyRatedItems.add(e.index());
+			    }	    	
+	    } else {
+	    	System.out.println("recommendAlreadyRated: true");
 	    }
-
+	    
 	    final TopItemsQueue topItemsQueue = new TopItemsQueue(recommendationsPerUser);
 	    final Vector userFeatures = U.get(userIndex);
 	    
 	    if (userFeatures == null) {
 	    	System.out.println("WARN: userFeatures for " + userIndex + " is null. OK if U is filtered.");
 	    } else {
+	    	//System.out.println("userIndex: " + userIndex);
 		    M.forEachPair(new IntObjectProcedure<Vector>() {
 			      @Override
 			      public boolean apply(int itemID, Vector itemFeatures) {
 			        if (!alreadyRatedItems.contains(itemID)) {
 			          double predictedRating = userFeatures.dot(itemFeatures);
-
+			          //System.out.println("itemID: " + itemID + " predictedRating: " + predictedRating);
+			          
 			          MutableRecommendedItem top = topItemsQueue.top();
 			          if (predictedRating > top.getValue()) {
 			            top.set(itemID, (float) predictedRating);

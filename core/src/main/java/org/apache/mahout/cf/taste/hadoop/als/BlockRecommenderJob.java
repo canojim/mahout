@@ -99,6 +99,9 @@ public class BlockRecommenderJob extends AbstractJob {
 	static final String NUM_ITEM_BLOCK = BlockRecommenderJob.class.getName()
 			+ ".numItemBlock";
 	
+	static final String RECOMMEND_ALREADY_RATED = BlockRecommenderJob.class.getName()
+			+ ".recommendAlreadyRated";
+	
 	static final int DEFAULT_NUM_RECOMMENDATIONS = 10;	
 	static final String FORMAT_CSV = "csv";
 	
@@ -133,6 +136,7 @@ public class BlockRecommenderJob extends AbstractJob {
 				String.valueOf(10));
 		addOption("outputFormat", null, "outputformat: csv or raw", FORMAT_CSV);
 		addOption("ringFence", null, "ringFence recommendation", "false");
+		addOption("recommendAlreadyRated", null, "RecommendAlreadyRated", "false"); 
 		
 		addOutputOption();
 
@@ -145,7 +149,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		FileSystem fs = FileSystem.get(defaultConf);
 		
 		boolean succeeded = false;
-		//boolean isRingFence = Boolean.parseBoolean(getOption("ringFence"));
+		boolean isRingFence = Boolean.parseBoolean(getOption("ringFence"));
 		
 		String rcmPath = getOption("recommendFilterPath");
 		boolean usesLongIDs = Boolean
@@ -154,13 +158,13 @@ public class BlockRecommenderJob extends AbstractJob {
 		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
 		
-		/*if ((isRingFence) && (numUserBlock > 1)) {
+		if ((isRingFence) && (numUserBlock > 1)) {
 			throw new IllegalArgumentException("numUserBlock should be 1 for ringFence recommendation.");
-		}*/
+		}
 			
 		String outputFormat = getOption("outputFormat");
 		
-		//if (!isRingFence) {
+		if (!isRingFence) {
 			if (!fs.exists(new Path(pathToUserRatingsByUserBlock().toString() + "/_SUCCESS"))) {
 				/* create block-wise user ratings */
 				Job userRatingsByUserBlock = prepareJob(getInputPath(),
@@ -206,7 +210,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					throw new IllegalStateException("userRatingsByUserBlock job failed");
 				}
 			}
-		//} if !ringFence
+		} //if !ringFence
 
 		String userFeaturesPath = getOption("userFeatures");
 		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(rcmPath, defaultConf, usesLongIDs), numUserBlock);
@@ -238,7 +242,7 @@ public class BlockRecommenderJob extends AbstractJob {
 
 				if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
 					Job blockPrediction = null;
-					//if (!isRingFence) {
+					if (!isRingFence) {
 						blockPrediction = prepareJob(blockUserRatingsPath,
 							blockOutputPath, SequenceFileInputFormat.class,
 							MultithreadedSharingMapper.class, LongWritable.class,
@@ -248,7 +252,7 @@ public class BlockRecommenderJob extends AbstractJob {
 						
 						MultithreadedMapper.setMapperClass(blockPrediction,
 								BlockPredictionMapper.class);
-					/*} else {
+					} else {
 						//ringFence
 						blockPrediction = prepareJob(new Path(userFeaturesPath),
 								blockOutputPath, SequenceFileInputFormat.class,
@@ -257,7 +261,7 @@ public class BlockRecommenderJob extends AbstractJob {
 						
 						MultithreadedMapper.setMapperClass(blockPrediction,
 								BlockFencePredictionMapper.class);
-					}*/
+					}
 					
 					Configuration blockPredictionConf = blockPrediction
 							.getConfiguration();
@@ -273,7 +277,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					
 					blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
 					blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
-
+					blockPredictionConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
 					
 					if (usesLongIDs) {
 						blockPredictionConf.set(
@@ -333,7 +337,7 @@ public class BlockRecommenderJob extends AbstractJob {
 				blockRecommendationConf.setInt(NUM_RECOMMENDATIONS,
 						Integer.parseInt(getOption("numRecommendations")));
 				blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
-
+				blockRecommendationConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
 				
 				log.info("Starting blockRecommendation (reduce) job. userBlockId: " + userBlockId.toString());
 				succeeded = blockRecommendation.waitForCompletion(true);
