@@ -126,8 +126,6 @@ public class BlockRecommenderJob extends AbstractJob {
 				"index for user long IDs (necessary if usesLongIDs is true)");
 		addOption("itemIDIndex", null,
 				"index for user long IDs (necessary if usesLongIDs is true)");
-		addOption("recommendFilterPath", null,
-				"filter recommended user id. (optional)");
 		addOption("queueName", null,
 				"mapreduce queueName. (optional)", "default");	
 		addOption("numUserBlock", null, "number of user blocks",
@@ -151,7 +149,6 @@ public class BlockRecommenderJob extends AbstractJob {
 		boolean succeeded = false;
 		boolean isRingFence = Boolean.parseBoolean(getOption("ringFence"));
 		
-		String rcmPath = getOption("recommendFilterPath");
 		boolean usesLongIDs = Boolean
 				.parseBoolean(getOption("usesLongIDs"));
 		
@@ -194,10 +191,6 @@ public class BlockRecommenderJob extends AbstractJob {
 				userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
 				userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
 				
-				if (rcmPath != null)
-					userRatingsConf.set(RECOMMEND_FILTER_PATH, rcmPath);
-				
-
 				if (usesLongIDs) {
 					userRatingsConf.set(
 							ParallelALSFactorizationJob.USES_LONG_IDS,
@@ -213,12 +206,8 @@ public class BlockRecommenderJob extends AbstractJob {
 		} //if !ringFence
 
 		String userFeaturesPath = getOption("userFeatures");
-		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(rcmPath, defaultConf, usesLongIDs), numUserBlock);
 		
-		log.info("Required blocks: " + userBlocks.toString());
-		
-		for (Integer userBlockId : userBlocks) {
-			int blockId = userBlockId.intValue();
+		for (int blockId=0; blockId < numUserBlock; blockId++) {
 			
 			JobManager jobMgr = new JobManager();
 			jobMgr.setQueueName(getOption("queueName"));
@@ -289,8 +278,8 @@ public class BlockRecommenderJob extends AbstractJob {
 								blockItemIDIndexPath.toString());
 					}
 		
-					if (rcmPath != null)
-						blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
+					//if (rcmPath != null)
+					//	blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
 					
 					MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
 		
@@ -305,7 +294,7 @@ public class BlockRecommenderJob extends AbstractJob {
 			}
 			
 			Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/" + Integer.toString(blockId) + "x*/");
-			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/" + userBlockId.toString());
+			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/" + Integer.toString(blockId));
 			
 			if (!fs.exists(new Path(blocksReduceOutputPath.toString() + "/_SUCCESS"))) {
 				Job blockRecommendation = null;
@@ -339,7 +328,7 @@ public class BlockRecommenderJob extends AbstractJob {
 				blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
 				blockRecommendationConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
 				
-				log.info("Starting blockRecommendation (reduce) job. userBlockId: " + userBlockId.toString());
+				log.info("Starting blockRecommendation (reduce) job. userBlockId: " + blockId);
 				succeeded = blockRecommendation.waitForCompletion(true);
 				if (!succeeded) {
 					throw new IllegalStateException("blockRecommendation (reduce) job failed");
@@ -417,6 +406,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		return new Path(getTempPath().toString() + "/userRatingsByUserBlock");
 	}
 	
+	@Deprecated
 	private static HashSet<Integer> getRequiredBlock(HashSet<Integer> filters, int numBlocks) {
 		HashSet<Integer> block = new HashSet<Integer>();
 		
@@ -435,6 +425,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	}
 	
 	// load recommendation filter list
+	@Deprecated
 	private static HashSet<Integer> loadFilterList(String locationStr, Configuration conf, boolean usesLongIDs)
 			throws IOException {
 

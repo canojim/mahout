@@ -20,6 +20,8 @@ package org.apache.mahout.cf.taste.hadoop;
 import com.google.common.primitives.Longs;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
 import org.apache.mahout.common.Pair;
 import org.apache.mahout.common.iterator.sequencefile.PathFilters;
 import org.apache.mahout.common.iterator.sequencefile.PathType;
@@ -84,7 +86,7 @@ public final class TasteHadoopUtils {
 			Configuration conf) {
 		OpenIntLongHashMap indexIDMap = new OpenIntLongHashMap();
 		Path itemIDIndexPath = new Path(idIndexPathStr);
-		for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
+		for (Pair<IntWritable, LongWritable> record : new SequenceFileDirIterable<IntWritable, LongWritable>(
 				itemIDIndexPath, PathType.GLOB, null, null,
 				true, conf)) {
 			indexIDMap.put(record.getFirst().get(), record.getSecond().get());
