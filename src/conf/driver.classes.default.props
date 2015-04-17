@@ -65,6 +65,7 @@ org.apache.mahout.cf.taste.hadoop.similarity.item.ItemSimilarityJob = itemsimila
 org.apache.mahout.cf.taste.hadoop.item.RecommenderJob = recommenditembased : Compute recommendations using item-based collaborative filtering
 org.apache.mahout.cf.taste.hadoop.als.ParallelALSFactorizationJob = parallelALS : ALS-WR factorization of a rating matrix
 org.apache.mahout.cf.taste.hadoop.als.BlockParallelALSFactorizationJob = blockParallelALS : Block ALS-WR factorization of a rating matrix
+org.apache.mahout.cf.taste.hadoop.als.UserItemIdMappingJob = idMapping : Map long ids to short ids
 
 org.apache.mahout.cf.taste.hadoop.als.BlockFenceRecommenderJob = recommendblockfencefactorized: Compute recommendations using the block factorization of a rating matrix. All users are aggregated.
 org.apache.mahout.cf.taste.hadoop.als.RecommenderJob = recommendfactorized : Compute recommendations using the factorization of a rating matrix
@@ -77,3 +78,4 @@ trainclassifier = deprecated : Try the new vector backed naivebayes classifier s
 testclassifier = deprecated : Try the new vector backed naivebayes classifier see examples/bin/classify-20newsgroups.sh
 lda = deprecated : Try the new Collapsed Variation Bayes LDA, try bin/mahout cvb or bin/mahout cvb0_local
 ldatopics = deprecated : Try the new Collapsed Variation Bayes LDA, try bin/mahout cvb or bin/mahout cvb0_local
+
