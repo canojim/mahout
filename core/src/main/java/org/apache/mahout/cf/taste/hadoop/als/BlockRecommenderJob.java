@@ -223,9 +223,9 @@ public class BlockRecommenderJob extends AbstractJob {
 				Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
 						+ Integer.toString(itemBlockId) + "-*-*");
 				Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
-						+ Integer.toString(blockId) + "-r-*");
+						+ Integer.toString(blockId) + "-*-*");
 				Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
-						+ Integer.toString(itemBlockId) + "-r-*");
+						+ Integer.toString(itemBlockId) + "-*-*");
 				Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
 						+ Integer.toString(blockId) + "x" + Integer.toString(itemBlockId));
 
