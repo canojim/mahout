@@ -72,7 +72,8 @@ public class RecommendCSVReducer extends Reducer<LongWritable, LongDoublePairWri
 	        itemAndScore.set(topItem.getItemID() + delimeter + topItem.getValue());
 	        ctx.write(userIDWritable, itemAndScore);
 	      }
-	    } 			
+	    } 					
+
 	}
 
 	

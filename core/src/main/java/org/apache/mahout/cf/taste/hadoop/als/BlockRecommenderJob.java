@@ -215,7 +215,8 @@ public class BlockRecommenderJob extends AbstractJob {
 			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
 		
 				Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
-						.toString() + "/" + Integer.toString(blockId) + "x" + Integer.toString(itemBlockId) + "-m-*");				
+						.toString() + "/" + Integer.toString(blockId) + "x*-m-*");
+						//.toString() + "/" + Integer.toString(blockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
 				//userRatingsByUserBlock/23x91-m-03308
 				
 				Path blockUserFeaturesPath = new Path(userFeaturesPath + "/"
@@ -234,7 +235,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					if (!isRingFence) {
 						blockPrediction = prepareJob(blockUserRatingsPath,
 							blockOutputPath, SequenceFileInputFormat.class,
-							MultithreadedSharingMapper.class, LongWritable.class,
+							MultithreadedSharingMapper.class, LongWritable.class,							
 							LongDoublePairWritable.class, SequenceFileOutputFormat.class);
 						
 						blockPrediction.setJobName("blockPrediction userblockId=" + blockId + " itemBlockId=" + itemBlockId);
@@ -285,7 +286,7 @@ public class BlockRecommenderJob extends AbstractJob {
 		
 					jobMgr.addJob(blockPrediction);					
 				}
-			}
+			} // for itemblock
 			
 			boolean allFinished = jobMgr.waitForCompletion();
 			
@@ -334,7 +335,7 @@ public class BlockRecommenderJob extends AbstractJob {
 					throw new IllegalStateException("blockRecommendation (reduce) job failed");
 				}
 			}			
-		} //for 
+		} //for userBlock
 
 
 		return 0;
