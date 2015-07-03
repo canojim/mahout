@@ -216,76 +216,76 @@ public class BlockRecommenderJob extends AbstractJob {
 		
 				Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
 						.toString() + "/" + Integer.toString(blockId) + "x*-m-*");
-						//.toString() + "/" + Integer.toString(blockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
-				//userRatingsByUserBlock/23x91-m-03308
 				
-				Path blockUserFeaturesPath = new Path(userFeaturesPath + "/"
-						+ Integer.toString(blockId) + "-*-*");
-				Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
-						+ Integer.toString(itemBlockId) + "-*-*");
-				Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
-						+ Integer.toString(blockId) + "-*-*");
-				Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
-						+ Integer.toString(itemBlockId) + "-*-*");
-				Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
-						+ Integer.toString(blockId) + "x" + Integer.toString(itemBlockId));
+				FileStatus[] fileStatus = fs.globStatus(blockUserRatingsPath);
+				System.out.println(blockUserRatingsPath + " fileStatus=" + fileStatus.length);
+				
+				if (fileStatus.length > 0) {
+					Path blockUserFeaturesPath = new Path(userFeaturesPath + "/"
+							+ Integer.toString(blockId) + "-*-*");
+					Path blockItemFeaturesPath = new Path(getOption("itemFeatures") + "/"
+							+ Integer.toString(itemBlockId) + "-*-*");
+					Path blockUserIDIndexPath = new Path(getOption("userIDIndex") + "/"
+							+ Integer.toString(blockId) + "-*-*");
+					Path blockItemIDIndexPath = new Path(getOption("itemIDIndex") + "/"
+							+ Integer.toString(itemBlockId) + "-*-*");
+					Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
+							+ Integer.toString(blockId) + "x" + Integer.toString(itemBlockId));
 
-				if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
-					Job blockPrediction = null;
-					if (!isRingFence) {
-						blockPrediction = prepareJob(blockUserRatingsPath,
-							blockOutputPath, SequenceFileInputFormat.class,
-							MultithreadedSharingMapper.class, LongWritable.class,							
-							LongDoublePairWritable.class, SequenceFileOutputFormat.class);
-						
-						blockPrediction.setJobName("blockPrediction userblockId=" + blockId + " itemBlockId=" + itemBlockId);
-						
-						MultithreadedMapper.setMapperClass(blockPrediction,
-								BlockPredictionMapper.class);
-					} else {
-						//ringFence
-						blockPrediction = prepareJob(new Path(userFeaturesPath),
+					if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
+						Job blockPrediction = null;
+						if (!isRingFence) {
+							blockPrediction = prepareJob(blockUserRatingsPath,
 								blockOutputPath, SequenceFileInputFormat.class,
-								MultithreadedSharingMapper.class, LongWritable.class,
+								MultithreadedSharingMapper.class, LongWritable.class,							
 								LongDoublePairWritable.class, SequenceFileOutputFormat.class);
+							
+							blockPrediction.setJobName("blockPrediction userblockId=" + blockId + " itemBlockId=" + itemBlockId);
+							
+							MultithreadedMapper.setMapperClass(blockPrediction,
+									BlockPredictionMapper.class);
+						} else {
+							//ringFence
+							blockPrediction = prepareJob(new Path(userFeaturesPath),
+									blockOutputPath, SequenceFileInputFormat.class,
+									MultithreadedSharingMapper.class, LongWritable.class,
+									LongDoublePairWritable.class, SequenceFileOutputFormat.class);
+							
+							MultithreadedMapper.setMapperClass(blockPrediction,
+									BlockFencePredictionMapper.class);
+						}
 						
-						MultithreadedMapper.setMapperClass(blockPrediction,
-								BlockFencePredictionMapper.class);
-					}
-					
-					Configuration blockPredictionConf = blockPrediction
-							.getConfiguration();
-					int numThreads = Integer.parseInt(getOption("numThreads"));
-					blockPredictionConf.set(USER_FEATURES_PATH,
-							blockUserFeaturesPath.toString());
-					blockPredictionConf.set(ITEM_FEATURES_PATH,
-							blockItemFeaturesPath.toString());
+						Configuration blockPredictionConf = blockPrediction
+								.getConfiguration();
+						int numThreads = Integer.parseInt(getOption("numThreads"));
+						blockPredictionConf.set(USER_FEATURES_PATH,
+								blockUserFeaturesPath.toString());
+						blockPredictionConf.set(ITEM_FEATURES_PATH,
+								blockItemFeaturesPath.toString());
 
-					blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
-							Integer.parseInt(getOption("numRecommendations")));
-					blockPredictionConf.set(MAX_RATING, getOption("maxRating"));
-					
-					blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
-					blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
-					blockPredictionConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
-					
-					if (usesLongIDs) {
-						blockPredictionConf.set(
-								ParallelALSFactorizationJob.USES_LONG_IDS,
-								String.valueOf(true));
-						blockPredictionConf.set(USER_INDEX_PATH,
-								blockUserIDIndexPath.toString());
-						blockPredictionConf.set(ITEM_INDEX_PATH,
-								blockItemIDIndexPath.toString());
+						blockPredictionConf.setInt(NUM_RECOMMENDATIONS,
+								Integer.parseInt(getOption("numRecommendations")));
+						blockPredictionConf.set(MAX_RATING, getOption("maxRating"));
+						
+						blockPredictionConf.setInt(NUM_USER_BLOCK, numUserBlock);
+						blockPredictionConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
+						blockPredictionConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
+						
+						if (usesLongIDs) {
+							blockPredictionConf.set(
+									ParallelALSFactorizationJob.USES_LONG_IDS,
+									String.valueOf(true));
+							blockPredictionConf.set(USER_INDEX_PATH,
+									blockUserIDIndexPath.toString());
+							blockPredictionConf.set(ITEM_INDEX_PATH,
+									blockItemIDIndexPath.toString());
+						}			
+						
+						MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
+			
+						jobMgr.addJob(blockPrediction);					
 					}
-		
-					//if (rcmPath != null)
-					//	blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
-					
-					MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
-		
-					jobMgr.addJob(blockPrediction);					
-				}
+				}				
 			} // for itemblock
 			
 			boolean allFinished = jobMgr.waitForCompletion();
@@ -297,44 +297,54 @@ public class BlockRecommenderJob extends AbstractJob {
 			Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/" + Integer.toString(blockId) + "x*/");
 			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/" + Integer.toString(blockId));
 			
-			if (!fs.exists(new Path(blocksReduceOutputPath.toString() + "/_SUCCESS"))) {
-				Job blockRecommendation = null;
-				Configuration blockRecommendationConf = null;
-				if (FORMAT_CSV.equals(outputFormat)) {
-					blockRecommendation = prepareJob(blocksReduceInputPath,
+			Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
+					.toString() + "/" + Integer.toString(blockId) + "x*-m-*");
+			
+			FileStatus[] fileStatus = fs.globStatus(blocksReduceInputPath);
+			System.out.println(blocksReduceInputPath + " fileStatus=" + fileStatus.length);
+			
+			if (fileStatus.length > 0) {
+				if (!fs.exists(new Path(blocksReduceOutputPath.toString() + "/_SUCCESS"))) {
+					Job blockRecommendation = null;
+					Configuration blockRecommendationConf = null;
+					if (FORMAT_CSV.equals(outputFormat)) {
+						blockRecommendation = prepareJob(blocksReduceInputPath,
+								blocksReduceOutputPath, SequenceFileInputFormat.class,
+								Mapper.class, LongWritable.class,
+								LongDoublePairWritable.class, 
+								RecommendCSVReducer.class,
+								LongWritable.class, Text.class, 
+								TextOutputFormat.class); 	
+						blockRecommendation.setJobName("blockRecommendation userblockId=" + blockId);					
+						blockRecommendationConf = blockRecommendation.getConfiguration();
+						blockRecommendationConf.set("mapred.textoutputformat.separator", ",");
+					} else {
+						blockRecommendation = prepareJob(blocksReduceInputPath,
 							blocksReduceOutputPath, SequenceFileInputFormat.class,
 							Mapper.class, LongWritable.class,
 							LongDoublePairWritable.class, 
-							RecommendCSVReducer.class,
-							LongWritable.class, Text.class, 
-							TextOutputFormat.class); 	
-					blockRecommendation.setJobName("blockRecommendation userblockId=" + blockId);					
-					blockRecommendationConf = blockRecommendation.getConfiguration();
-					blockRecommendationConf.set("mapred.textoutputformat.separator", ",");
-				} else {
-					blockRecommendation = prepareJob(blocksReduceInputPath,
-						blocksReduceOutputPath, SequenceFileInputFormat.class,
-						Mapper.class, LongWritable.class,
-						LongDoublePairWritable.class, 
-						RecommendReducer.class,
-						LongWritable.class, RecommendedItemsWritable.class, 
-						TextOutputFormat.class);
+							RecommendReducer.class,
+							LongWritable.class, RecommendedItemsWritable.class, 
+							TextOutputFormat.class);
+						
+						blockRecommendationConf = blockRecommendation.getConfiguration();
+					}
 					
-					blockRecommendationConf = blockRecommendation.getConfiguration();
-				}
+					blockRecommendationConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
+					blockRecommendationConf.setInt(NUM_RECOMMENDATIONS,
+							Integer.parseInt(getOption("numRecommendations")));
+					blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
+					blockRecommendationConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
+					
+					log.info("Starting blockRecommendation (reduce) job. userBlockId: " + blockId);
+					succeeded = blockRecommendation.waitForCompletion(true);
+					if (!succeeded) {
+						throw new IllegalStateException("blockRecommendation (reduce) job failed");
+					}
+				}		
+			}
+			
 				
-				blockRecommendationConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
-				blockRecommendationConf.setInt(NUM_RECOMMENDATIONS,
-						Integer.parseInt(getOption("numRecommendations")));
-				blockRecommendationConf.setInt(MAX_RATING, Integer.parseInt(getOption("maxRating")));
-				blockRecommendationConf.setBoolean(RECOMMEND_ALREADY_RATED, Boolean.parseBoolean(getOption("recommendAlreadyRated")));
-				
-				log.info("Starting blockRecommendation (reduce) job. userBlockId: " + blockId);
-				succeeded = blockRecommendation.waitForCompletion(true);
-				if (!succeeded) {
-					throw new IllegalStateException("blockRecommendation (reduce) job failed");
-				}
-			}			
 		} //for userBlock
 
 
