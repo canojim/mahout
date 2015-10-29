@@ -82,8 +82,22 @@ public final class TasteHadoopUtils {
 		return indexIDMap;
 	}
 
+	//old format
 	public static OpenIntLongHashMap readIDIndexMapGlob(String idIndexPathStr,
 			Configuration conf) {
+		OpenIntLongHashMap indexIDMap = new OpenIntLongHashMap();
+		Path itemIDIndexPath = new Path(idIndexPathStr);
+		for (Pair<VarIntWritable, VarLongWritable> record : new SequenceFileDirIterable<VarIntWritable, VarLongWritable>(
+				itemIDIndexPath, PathType.GLOB, null, null,
+				true, conf)) {
+			indexIDMap.put(record.getFirst().get(), record.getSecond().get());
+		}
+		return indexIDMap;
+	}
+
+	//new format
+	public static OpenIntLongHashMap readIDIndexMapGlobInt(String idIndexPathStr,
+														Configuration conf) {
 		OpenIntLongHashMap indexIDMap = new OpenIntLongHashMap();
 		Path itemIDIndexPath = new Path(idIndexPathStr);
 		for (Pair<IntWritable, LongWritable> record : new SequenceFileDirIterable<IntWritable, LongWritable>(

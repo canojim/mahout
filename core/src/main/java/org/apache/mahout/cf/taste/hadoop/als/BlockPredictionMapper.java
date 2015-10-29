@@ -19,6 +19,8 @@ package org.apache.mahout.cf.taste.hadoop.als;
 
 import java.io.IOException;
 import java.util.List;
+import java.io.InputStream;
+import java.io.StringWriter;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -36,6 +38,16 @@ import org.apache.mahout.math.function.IntObjectProcedure;
 import org.apache.mahout.math.map.OpenIntLongHashMap;
 import org.apache.mahout.math.map.OpenIntObjectHashMap;
 import org.apache.mahout.math.set.OpenIntHashSet;
+import java.util.HashSet;
+import com.google.common.base.Preconditions;
+import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
 
 /**
  * a multithreaded mapper that loads the feature matrices U and M into memory.
@@ -60,7 +72,8 @@ public class BlockPredictionMapper
 	private Path pathToBlockU;
 	private Path pathToBlockM;
 	private boolean recommendAlreadyRated = false;
-	
+	private Path rcmFilterPath;
+	private HashSet<Integer> rcmFilterSet = null;
 
 	@Override
 	Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>> createSharedInstance(Context ctx) {
@@ -75,7 +88,7 @@ public class BlockPredictionMapper
 		
 		System.out.println("pathToBlockU: " + pathToBlockU.toString());
 		System.out.println("pathToBlockM: " + pathToBlockM.toString());
-		
+
 		System.out.println("U.size: " + U.size() + " M.size: " + M.size());
 		return new Pair<OpenIntObjectHashMap<Vector>,OpenIntObjectHashMap<Vector>>(U, M);
 		
@@ -92,18 +105,39 @@ public class BlockPredictionMapper
 				ParallelALSFactorizationJob.USES_LONG_IDS, false);
 
 		recommendAlreadyRated = conf.getBoolean(BlockRecommenderJob.RECOMMEND_ALREADY_RATED, false);
-		
+
+		String p = conf.get(BlockRecommenderJob.RECOMMEND_FILTER_PATH);
+		if (p != null) {
+			rcmFilterPath = new Path(p);
+			rcmFilterSet = loadFilterList(conf);
+			Preconditions.checkState(rcmFilterSet.size() > 0, "Empty filter list. Check " + BlockRecommenderJob.RECOMMEND_FILTER_PATH);
+		}
+
 		if (usesLongIDs) {
 			String userIndexPath = conf.get(BlockRecommenderJob.USER_INDEX_PATH);
 			String itemIndexPath = conf.get(BlockRecommenderJob.ITEM_INDEX_PATH);
 			
 			System.out.println("userIndexPath: " + userIndexPath);
 			System.out.println("itemIndexPath: " + itemIndexPath);
-			
-			userIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
-					conf.get(BlockRecommenderJob.USER_INDEX_PATH), conf);
-			itemIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
-					conf.get(BlockRecommenderJob.ITEM_INDEX_PATH), conf);
+
+			//TODO: Refactor to use common format
+			if (userIndexPath.contains("/als/out/")) {
+				userIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
+						conf.get(BlockRecommenderJob.USER_INDEX_PATH), conf);
+			} else {
+				userIDIndex = TasteHadoopUtils.readIDIndexMapGlobInt(
+						conf.get(BlockRecommenderJob.USER_INDEX_PATH), conf);
+			}
+
+			if (itemIndexPath.contains("/als/out/")) {
+				itemIDIndex = TasteHadoopUtils.readIDIndexMapGlob(
+						conf.get(BlockRecommenderJob.ITEM_INDEX_PATH), conf);
+			} else {
+				itemIDIndex = TasteHadoopUtils.readIDIndexMapGlobInt(
+						conf.get(BlockRecommenderJob.ITEM_INDEX_PATH), conf);
+			}
+
+
 			System.out.println("userIDIndex.size: " + userIDIndex.size() + " itemIDIndex.size(): " + itemIDIndex.size());
 		}
 		
@@ -113,15 +147,20 @@ public class BlockPredictionMapper
 	protected void map(IntWritable userIndexWritable,
 			VectorWritable ratingsWritable, Context ctx) throws IOException,
 			InterruptedException {
-		
-	    int userIndex = userIndexWritable.get();
-	    	    
+
+		int userIndex = userIndexWritable.get();
+
+		if (rcmFilterSet != null && !rcmFilterSet.contains(new Integer(userIndex))) {
+			return; // Generate recommendation for selected few
+			// id only.
+		}
+
 		Pair<OpenIntObjectHashMap<Vector>, OpenIntObjectHashMap<Vector>> 
 			uAndM = getSharedInstance();
 		OpenIntObjectHashMap<Vector> U = uAndM.getFirst();
 		OpenIntObjectHashMap<Vector> M = uAndM.getSecond();
-		
-	    Vector ratings = ratingsWritable.get();
+
+		Vector ratings = ratingsWritable.get();
 
 	    final OpenIntHashSet alreadyRatedItems = new OpenIntHashSet(ratings.getNumNondefaultElements());
 
@@ -188,5 +227,12 @@ public class BlockPredictionMapper
 		    }
 	    }	    
 	}
+
+	// load recommendation filter list
+	private HashSet<Integer> loadFilterList(Configuration conf) throws IOException {
+		//return loadFilterList(rcmFilterPath, conf);
+		return BlockRecommenderJob.loadFilterList(rcmFilterPath.toString(), conf, usesLongIDs);
+	}
+
 
 }

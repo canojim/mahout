@@ -134,7 +134,9 @@ public class BlockRecommenderJob extends AbstractJob {
 				String.valueOf(10));
 		addOption("outputFormat", null, "outputformat: csv or raw", FORMAT_CSV);
 		addOption("ringFence", null, "ringFence recommendation", "false");
-		addOption("recommendAlreadyRated", null, "RecommendAlreadyRated", "false"); 
+		addOption("recommendAlreadyRated", null, "RecommendAlreadyRated", "false");
+		addOption("recommendFilterPath", null,
+				"filter recommended user id. (optional)");
 		
 		addOutputOption();
 
@@ -151,7 +153,9 @@ public class BlockRecommenderJob extends AbstractJob {
 		
 		boolean usesLongIDs = Boolean
 				.parseBoolean(getOption("usesLongIDs"));
-		
+
+		String rcmPath = getOption("recommendFilterPath");
+
 		int numUserBlock = Integer.parseInt(getOption("numUserBlock"));
 		int numItemBlock = Integer.parseInt(getOption("numItemBlock"));
 		
@@ -190,7 +194,10 @@ public class BlockRecommenderJob extends AbstractJob {
 				userRatingsConf.setInt(NUM_USER_BLOCK, numUserBlock);
 				userRatingsConf.setInt(NUM_ITEM_BLOCK, numItemBlock);
 				userRatingsConf.set(JobManager.QUEUE_NAME, getOption("queueName"));
-				
+
+				if (rcmPath != null)
+					userRatingsConf.set(RECOMMEND_FILTER_PATH, rcmPath);
+
 				if (usesLongIDs) {
 					userRatingsConf.set(
 							ParallelALSFactorizationJob.USES_LONG_IDS,
@@ -206,16 +213,18 @@ public class BlockRecommenderJob extends AbstractJob {
 		} //if !ringFence
 
 		String userFeaturesPath = getOption("userFeatures");
-		
-		for (int blockId=0; blockId < numUserBlock; blockId++) {
-			
+
+		HashSet<Integer> userBlocks = getRequiredBlock(loadFilterList(rcmPath, defaultConf, usesLongIDs), numUserBlock);
+
+		//for (int blockId=0; blockId < numUserBlock; blockId++) {
+		for (Integer blockId : userBlocks) {
 			JobManager jobMgr = new JobManager();
 			jobMgr.setQueueName(getOption("queueName"));
 			
 			for (int itemBlockId = 0; itemBlockId < numItemBlock; itemBlockId++) {
 		
 				Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
-						.toString() + "/" + Integer.toString(blockId) + "x*-m-*");
+						.toString() + "/" + Integer.toString(blockId) + "x" + Integer.toString(itemBlockId) + "-m-*");
 				
 				FileStatus[] fileStatus = fs.globStatus(blockUserRatingsPath);
 				System.out.println(blockUserRatingsPath + " fileStatus=" + fileStatus.length);
@@ -231,6 +240,11 @@ public class BlockRecommenderJob extends AbstractJob {
 							+ Integer.toString(itemBlockId) + "-*-*");
 					Path blockOutputPath = new Path(getTempPath().toString() + "/result/"
 							+ Integer.toString(blockId) + "x" + Integer.toString(itemBlockId));
+
+					System.out.println(blockUserFeaturesPath);
+					System.out.println(blockItemFeaturesPath);
+					System.out.println(blockUserIDIndexPath);
+					System.out.println(blockItemIDIndexPath);
 
 					if (!fs.exists(new Path(blockOutputPath.toString() + "/_SUCCESS"))) {
 						Job blockPrediction = null;
@@ -279,8 +293,11 @@ public class BlockRecommenderJob extends AbstractJob {
 									blockUserIDIndexPath.toString());
 							blockPredictionConf.set(ITEM_INDEX_PATH,
 									blockItemIDIndexPath.toString());
-						}			
-						
+						}
+
+						if (rcmPath != null)
+							blockPredictionConf.set(RECOMMEND_FILTER_PATH, rcmPath);
+
 						MultithreadedMapper.setNumberOfThreads(blockPrediction, numThreads);
 			
 						jobMgr.addJob(blockPrediction);					
@@ -297,8 +314,8 @@ public class BlockRecommenderJob extends AbstractJob {
 			Path blocksReduceInputPath = new Path(getTempPath().toString() + "/result/" + Integer.toString(blockId) + "x*/");
 			Path blocksReduceOutputPath = new Path(getOutputPath().toString() + "/" + Integer.toString(blockId));
 			
-			Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
-					.toString() + "/" + Integer.toString(blockId) + "x*-m-*");
+			//Path blockUserRatingsPath = new Path(pathToUserRatingsByUserBlock()
+			//		.toString() + "/" + Integer.toString(blockId) + "x*-m-*");
 			
 			FileStatus[] fileStatus = fs.globStatus(blocksReduceInputPath);
 			System.out.println(blocksReduceInputPath + " fileStatus=" + fileStatus.length);
@@ -399,8 +416,8 @@ public class BlockRecommenderJob extends AbstractJob {
 					numItemBlocks);			
 			
 			String outputName = Integer.toString(userBlockId) + "x" + Integer.toString(itemBlockId);
-			
-			
+
+
 			out.write(outputName, userIdWritable, ratingsWritable);
 		}
 
@@ -416,8 +433,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	private Path pathToUserRatingsByUserBlock() {
 		return new Path(getTempPath().toString() + "/userRatingsByUserBlock");
 	}
-	
-	@Deprecated
+
 	private static HashSet<Integer> getRequiredBlock(HashSet<Integer> filters, int numBlocks) {
 		HashSet<Integer> block = new HashSet<Integer>();
 		
@@ -436,8 +452,7 @@ public class BlockRecommenderJob extends AbstractJob {
 	}
 	
 	// load recommendation filter list
-	@Deprecated
-	private static HashSet<Integer> loadFilterList(String locationStr, Configuration conf, boolean usesLongIDs)
+	public static HashSet<Integer> loadFilterList(String locationStr, Configuration conf, boolean usesLongIDs)
 			throws IOException {
 
 		HashSet<Integer> s = new HashSet<Integer>();

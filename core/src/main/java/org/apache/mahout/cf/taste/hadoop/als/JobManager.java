@@ -40,9 +40,13 @@ public class JobManager {
 					log.info("Submitting " + job.getJobName());
 					
 					job.getConfiguration().set(QUEUE_NAME, queueName);
-					job.submit();
+					boolean status = job.waitForCompletion(true);
+					if (status == false) {
+						return false;
+					}
+					//job.submit();
 	
-					runningJobs.add(job);
+					//runningJobs.add(job);
 				}
 	
 				Thread.sleep(SLEEP_INTERVAL);
